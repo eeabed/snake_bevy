@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.13.0"
+bevy = "0.14.2"
 rand = "0.8.5"
 
 # Enable a small amount of optimization in debug mode

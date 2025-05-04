@@ -7,11 +7,11 @@ use std::time::Duration;
 // Game constants
 const ARENA_WIDTH: u32 = 20;
 const ARENA_HEIGHT: u32 = 20;
-const SNAKE_HEAD_COLOR: Color = Color::rgb(0.9, 0.9, 0.9); // Brighter head color
-const SNAKE_SEGMENT_COLOR: Color = Color::rgb(0.5, 0.5, 0.5); // Brighter segment color
-const FOOD_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
-const ARENA_COLOR: Color = Color::rgb(0.1, 0.1, 0.1);
-const BACKGROUND_COLOR: Color = Color::rgb(0.04, 0.04, 0.04);
+const SNAKE_HEAD_COLOR: Color = Color::srgba(0.9, 0.9, 0.9, 1.0); // Brighter head color
+const SNAKE_SEGMENT_COLOR: Color = Color::srgba(0.5, 0.5, 0.5, 1.0); // Brighter segment color
+const FOOD_COLOR: Color = Color::srgba(1.0, 0.0, 0.0, 1.0);
+const ARENA_COLOR: Color = Color::srgba(0.1, 0.1, 0.1, 1.0);
+const BACKGROUND_COLOR: Color = Color::srgba(0.04, 0.04, 0.04, 1.0);
 const CELL_SIZE: f32 = 25.0;
 const MOVE_INTERVAL: Duration = Duration::from_millis(150);
 
