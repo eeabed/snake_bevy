@@ -1,6 +1,6 @@
 # Snake Game in Rust with Bevy
 
-A simple Snake game implemented in Rust using the Bevy game engine.
+A simple Snake game implemented in Rust using the Bevy game engine, written entirely by _Claud Desktop_ with _Desktop Commander MCP_, including this README file.
 
 ## Features
 
@@ -21,12 +21,7 @@ A simple Snake game implemented in Rust using the Bevy game engine.
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 
-2. Navigate to the project directory:
-   ```bash
-   cd ~/src/snake_rust
-   ```
-
-3. Run the game:
+2. Navigate to the project directory and run the game:
    ```bash
    cargo run --release
    ```
@@ -40,6 +35,7 @@ A simple Snake game implemented in Rust using the Bevy game engine.
 
 ## Dependencies
 
+- Rust 1.86.0
 - Bevy 0.16.0
 - rand 0.9.1
 
@@ -47,7 +43,3 @@ A simple Snake game implemented in Rust using the Bevy game engine.
 
 - `src/main.rs`: Contains all game code
 - `assets/fonts/`: Contains font files for text rendering
-
-## Notes
-
-This game requires a font file at `assets/fonts/FiraSans-Bold.ttf` for displaying the score. If you don't have this font, download it or replace it with another font and update the path in the code.
