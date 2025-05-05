@@ -2,6 +2,8 @@
 
 A simple Snake game implemented in Rust using the Bevy game engine, written entirely by _Claud Desktop_ with _Desktop Commander MCP_, including this README file.
 
+![Game Screenshot](screenshot.png)
+
 ## Features
 
 - Classic Snake gameplay mechanics
