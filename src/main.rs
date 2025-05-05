@@ -141,6 +141,7 @@ fn setup_system(
             font: asset_server.load("fonts/FiraSans-Bold.ttf"),
             font_size: 20.0,
             font_smoothing: Default::default(),
+            ..default()
         },
         TextColor(Color::WHITE),
         Node {
@@ -351,7 +352,7 @@ fn food_collision(
                 commands.entity(food_entity).despawn();
                 game_state.just_eaten = true;
                 game_state.score += 1;
-                growth_writer.send(GrowthEvent);
+                growth_writer.write(GrowthEvent);
                 spawn_food(&mut commands);
             }
         }
@@ -455,7 +456,7 @@ fn restart_game(
 }
 
 fn update_score_text(game_state: Res<GameState>, mut query: Query<&mut Text, With<ScoreText>>) {
-    if let Ok(mut text) = query.get_single_mut() {
+    if let Ok(mut text) = query.single_mut() {
         *text = Text::from(format!("Score: {}", game_state.score));
     }
 }
