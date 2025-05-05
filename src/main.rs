@@ -161,9 +161,6 @@ fn setup_system(
     let head_entity = spawn_snake_head(&mut commands);
     game_state.snake_segments.push(head_entity);
 
-    // Print debug info
-    println!("Snake head spawned at position: (3, 3)");
-
     // Spawn initial food
     spawn_food(&mut commands);
 
@@ -177,7 +174,6 @@ fn setup_system(
                 1.0, // Set z-index to 1.0 to ensure it renders above background
             );
         }
-        println!("Position translation applied immediately");
     });
 }
 
