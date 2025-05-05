@@ -40,8 +40,8 @@ A simple Snake game implemented in Rust using the Bevy game engine.
 
 ## Dependencies
 
-- Bevy 0.13.0
-- rand 0.8.5
+- Bevy 0.16.0
+- rand 0.9.1
 
 ## Project Structure
 

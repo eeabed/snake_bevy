@@ -222,9 +222,9 @@ fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
 }
 
 fn spawn_food(commands: &mut Commands) {
-    let mut rng = rand::thread_rng();
-    let x = rng.gen_range(0..ARENA_WIDTH) as i32;
-    let y = rng.gen_range(0..ARENA_HEIGHT) as i32;
+    let mut rng = rand::rng();
+    let x = rng.random_range(0..ARENA_WIDTH) as i32;
+    let y = rng.random_range(0..ARENA_HEIGHT) as i32;
 
     commands.spawn((
         Sprite {
