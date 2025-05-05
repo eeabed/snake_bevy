@@ -135,23 +135,22 @@ fn setup_system(
     ));
 
     // Score text
-    commands
-        .spawn((
-            Text::from("Score: 0"),
-            TextFont {
-                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                font_size: 20.0,
-                font_smoothing: Default::default(),
-            },
-            TextColor(Color::WHITE),
-            Node {
-                position_type: PositionType::Absolute,
-                top: Val::Px(10.0),
-                left: Val::Px(10.0),
-                ..default()
-            },
-            ScoreText,
-        ));
+    commands.spawn((
+        Text::from("Score: 0"),
+        TextFont {
+            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+            font_size: 20.0,
+            font_smoothing: Default::default(),
+        },
+        TextColor(Color::WHITE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(10.0),
+            left: Val::Px(10.0),
+            ..default()
+        },
+        ScoreText,
+    ));
 
     // Spawn initial snake
     game_state.snake_segments.clear();
@@ -226,17 +225,16 @@ fn spawn_food(commands: &mut Commands) {
     let x = rng.gen_range(0..ARENA_WIDTH) as i32;
     let y = rng.gen_range(0..ARENA_HEIGHT) as i32;
 
-    commands
-        .spawn((
-            Sprite {
-                color: FOOD_COLOR,
-                custom_size: Some(Vec2::new(CELL_SIZE, CELL_SIZE)),
-                ..default()
-            },
-            Transform::default(),
-            Food,
-            Position { x, y },
-        ));
+    commands.spawn((
+        Sprite {
+            color: FOOD_COLOR,
+            custom_size: Some(Vec2::new(CELL_SIZE, CELL_SIZE)),
+            ..default()
+        },
+        Transform::default(),
+        Food,
+        Position { x, y },
+    ));
 }
 
 fn snake_movement_input(
