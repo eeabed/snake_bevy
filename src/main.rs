@@ -119,11 +119,11 @@ fn setup_system(
     asset_server: Res<AssetServer>,
 ) {
     // Setup camera
-    commands.spawn(Camera2dBundle::default());
+    commands.spawn(Camera2d::default());
 
     // Arena background
-    commands.spawn(SpriteBundle {
-        sprite: Sprite {
+    commands.spawn((
+        Sprite {
             color: ARENA_COLOR,
             custom_size: Some(Vec2::new(
                 ARENA_WIDTH as f32 * CELL_SIZE,
@@ -131,29 +131,27 @@ fn setup_system(
             )),
             ..default()
         },
-        transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
-        ..default()
-    });
+        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+    ));
 
     // Score text
     commands
-        .spawn(
-            TextBundle::from_section(
-                "Score: 0",
-                TextStyle {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
-                    font_size: 20.0,
-                    color: Color::WHITE,
-                },
-            )
-            .with_style(Style {
+        .spawn((
+            Text::from("Score: 0"),
+            TextFont {
+                font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                font_size: 20.0,
+                font_smoothing: Default::default(),
+            },
+            TextColor(Color::WHITE),
+            Node {
                 position_type: PositionType::Absolute,
                 top: Val::Px(10.0),
                 left: Val::Px(10.0),
                 ..default()
-            }),
-        )
-        .insert(ScoreText);
+            },
+            ScoreText,
+        ));
 
     // Spawn initial snake
     game_state.snake_segments.clear();
@@ -170,7 +168,7 @@ fn setup_system(
     spawn_food(&mut commands);
 
     // Force immediate position update
-    commands.add(move |world: &mut World| {
+    commands.queue(move |world: &mut World| {
         let mut position_query = world.query::<(&Position, &mut Transform)>();
         for (pos, mut transform) in position_query.iter_mut(world) {
             transform.translation = Vec3::new(
@@ -188,39 +186,38 @@ struct ScoreText;
 
 fn spawn_snake_head(commands: &mut Commands) -> Entity {
     commands
-        .spawn(SpriteBundle {
-            sprite: Sprite {
+        .spawn((
+            Sprite {
                 color: SNAKE_HEAD_COLOR,
                 custom_size: Some(Vec2::new(CELL_SIZE * 0.9, CELL_SIZE * 0.9)), // Slightly smaller for visual clarity
                 ..default()
             },
             // Pre-position it properly in the center of the grid
-            transform: Transform::from_xyz(
+            Transform::from_xyz(
                 (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
                 (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
                 2.0, // Higher z-index to ensure visibility
             ),
-            ..default()
-        })
-        .insert(SnakeHead {
-            direction: Direction::Right,
-        })
-        .insert(Position { x: 3, y: 3 })
+            SnakeHead {
+                direction: Direction::Right,
+            },
+            Position { x: 3, y: 3 },
+        ))
         .id()
 }
 
 fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
     commands
-        .spawn(SpriteBundle {
-            sprite: Sprite {
+        .spawn((
+            Sprite {
                 color: SNAKE_SEGMENT_COLOR,
                 custom_size: Some(Vec2::new(CELL_SIZE, CELL_SIZE)),
                 ..default()
             },
-            ..default()
-        })
-        .insert(SnakeSegment)
-        .insert(position)
+            Transform::default(),
+            SnakeSegment,
+            position,
+        ))
         .id()
 }
 
@@ -230,16 +227,16 @@ fn spawn_food(commands: &mut Commands) {
     let y = rng.gen_range(0..ARENA_HEIGHT) as i32;
 
     commands
-        .spawn(SpriteBundle {
-            sprite: Sprite {
+        .spawn((
+            Sprite {
                 color: FOOD_COLOR,
                 custom_size: Some(Vec2::new(CELL_SIZE, CELL_SIZE)),
                 ..default()
             },
-            ..default()
-        })
-        .insert(Food)
-        .insert(Position { x, y });
+            Transform::default(),
+            Food,
+            Position { x, y },
+        ));
 }
 
 fn snake_movement_input(
@@ -461,6 +458,6 @@ fn restart_game(
 
 fn update_score_text(game_state: Res<GameState>, mut query: Query<&mut Text, With<ScoreText>>) {
     if let Ok(mut text) = query.get_single_mut() {
-        text.sections[0].value = format!("Score: {}", game_state.score);
+        *text = Text::from(format!("Score: {}", game_state.score));
     }
 }
