@@ -14,6 +14,13 @@ const ARENA_COLOR: Color = Color::srgba(0.1, 0.1, 0.1, 1.0);
 const BACKGROUND_COLOR: Color = Color::srgba(0.04, 0.04, 0.04, 1.0);
 const CELL_SIZE: f32 = 25.0;
 const MOVE_INTERVAL: Duration = Duration::from_millis(150);
+const INITIAL_SNAKE_POSITION: Position = Position { x: 3, y: 3 };
+
+// Z-index constants for rendering layers
+const Z_BACKGROUND: f32 = 0.0;
+const Z_FOOD: f32 = 1.0;
+const Z_SNAKE_SEGMENT: f32 = 1.5;
+const Z_SNAKE_HEAD: f32 = 2.0;
 
 // Component to mark the snake's head
 #[derive(Component)]
@@ -36,6 +43,12 @@ struct Position {
     y: i32,
 }
 
+impl Position {
+    fn collides_with(&self, other: &Position) -> bool {
+        self.x == other.x && self.y == other.y
+    }
+}
+
 // Direction enum
 #[derive(PartialEq, Copy, Clone, Debug)]
 enum Direction {
@@ -54,6 +67,25 @@ impl Direction {
             Direction::Down => Direction::Up,
         }
     }
+
+    fn from_input(keyboard_input: &ButtonInput<KeyCode>, current: Direction) -> Direction {
+        if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
+            Direction::Left
+        } else if keyboard_input.pressed(KeyCode::ArrowRight)
+            || keyboard_input.pressed(KeyCode::KeyD)
+        {
+            Direction::Right
+        } else if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW)
+        {
+            Direction::Up
+        } else if keyboard_input.pressed(KeyCode::ArrowDown)
+            || keyboard_input.pressed(KeyCode::KeyS)
+        {
+            Direction::Down
+        } else {
+            current
+        }
+    }
 }
 
 // Game state resource
@@ -62,7 +94,6 @@ struct GameState {
     snake_segments: Vec<Entity>,
     score: usize,
     game_over: bool,
-    just_eaten: bool,
 }
 
 impl Default for GameState {
@@ -71,7 +102,6 @@ impl Default for GameState {
             snake_segments: Vec::new(),
             score: 0,
             game_over: false,
-            just_eaten: false,
         }
     }
 }
@@ -163,7 +193,7 @@ fn setup_system(
     game_state.snake_segments.push(head_entity);
 
     // Spawn initial food (pass initial snake position)
-    spawn_food(&mut commands, &[Position { x: 3, y: 3 }]);
+    spawn_food(&mut commands, &[INITIAL_SNAKE_POSITION]);
 
     // Force immediate position update
     commands.queue(move |world: &mut World| {
@@ -198,7 +228,7 @@ fn spawn_snake_head(commands: &mut Commands) -> Entity {
             SnakeHead {
                 direction: Direction::Right,
             },
-            Position { x: 3, y: 3 },
+            INITIAL_SNAKE_POSITION,
         ))
         .id()
 }
@@ -252,28 +282,11 @@ fn snake_movement_input(
     mut heads: Query<&mut SnakeHead>,
 ) {
     if let Some(mut head) = heads.iter_mut().next() {
-        let dir = if keyboard_input.pressed(KeyCode::ArrowLeft)
-            || keyboard_input.pressed(KeyCode::KeyA)
-        {
-            Direction::Left
-        } else if keyboard_input.pressed(KeyCode::ArrowRight)
-            || keyboard_input.pressed(KeyCode::KeyD)
-        {
-            Direction::Right
-        } else if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW)
-        {
-            Direction::Up
-        } else if keyboard_input.pressed(KeyCode::ArrowDown)
-            || keyboard_input.pressed(KeyCode::KeyS)
-        {
-            Direction::Down
-        } else {
-            head.direction
-        };
+        let new_direction = Direction::from_input(&keyboard_input, head.direction);
 
         // Prevent the snake from reversing direction
-        if dir != head.direction.opposite() {
-            head.direction = dir;
+        if new_direction != head.direction.opposite() {
+            head.direction = new_direction;
         }
     }
 }
@@ -290,7 +303,8 @@ fn snake_movement(
         return;
     }
 
-    // First, get the head entity and its current direction and position
+    // Step 1: Get the head entity and its current direction and position
+    // We use ParamSet because we need to query positions mutably in multiple steps
     let (head_entity, head_direction, head_position) = {
         let mut heads_query = query_set.p0();
         if let Some((entity, head, position)) = heads_query.iter_mut().next() {
@@ -300,7 +314,9 @@ fn snake_movement(
         }
     };
 
-    // Record the current position of each segment
+    // Step 2: Record the current position of each segment before any movement
+    // This is the classic "snake movement" pattern: each segment moves to where
+    // the segment in front of it was
     let segments_positions = {
         let mut positions = Vec::new();
         let positions_query = query_set.p1();
@@ -315,11 +331,11 @@ fn snake_movement(
         positions
     };
 
-    // Now update the head position
+    // Step 3: Move the head in the current direction
     {
         let mut heads_query = query_set.p0();
         if let Some((_, _, mut head_pos)) = heads_query.iter_mut().next() {
-            // Move the head
+            // Move the head one cell in the current direction
             match head_direction {
                 Direction::Left => head_pos.x -= 1,
                 Direction::Right => head_pos.x += 1,
@@ -327,13 +343,13 @@ fn snake_movement(
                 Direction::Down => head_pos.y -= 1,
             }
 
-            // Wrap around if the snake goes off the edge
+            // Wrap around if the snake goes off the edge (creates a toroidal arena)
             head_pos.x = (head_pos.x + ARENA_WIDTH as i32) % ARENA_WIDTH as i32;
             head_pos.y = (head_pos.y + ARENA_HEIGHT as i32) % ARENA_HEIGHT as i32;
         }
     }
 
-    // Move the rest of the snake
+    // Step 4: Move each body segment to the position of the segment in front of it
     {
         let mut positions_query = query_set.p1();
         for (i, segment_entity) in game_state.snake_segments.iter().skip(1).enumerate() {
@@ -358,9 +374,8 @@ fn food_collision(
 
     if let Some(head_pos) = head_positions.iter().next() {
         for (food_entity, food_pos) in food_positions.iter() {
-            if head_pos.x == food_pos.x && head_pos.y == food_pos.y {
+            if head_pos.collides_with(food_pos) {
                 commands.entity(food_entity).despawn();
-                game_state.just_eaten = true;
                 game_state.score += 1;
                 growth_writer.write(GrowthEvent);
 
@@ -400,13 +415,13 @@ fn position_translation(
     for (pos, mut transform, head, segment, food) in transforms.iter_mut() {
         // Set z-index based on entity type to ensure proper layering
         let z = if head.is_some() {
-            2.0 // Snake head on top
+            Z_SNAKE_HEAD
         } else if segment.is_some() {
-            1.5 // Snake segments in middle
+            Z_SNAKE_SEGMENT
         } else if food.is_some() {
-            1.0 // Food above background
+            Z_FOOD
         } else {
-            0.0 // Background
+            Z_BACKGROUND
         };
 
         transform.translation = Vec3::new(
@@ -428,7 +443,7 @@ fn game_over_check(
 
     if let Some(head_pos) = head_positions.iter().next() {
         for (segment_pos, segment_entity) in segment_positions.iter() {
-            if head_pos.x == segment_pos.x && head_pos.y == segment_pos.y {
+            if head_pos.collides_with(segment_pos) {
                 if game_state.snake_segments.len() > 1
                     && game_state.snake_segments[1] != segment_entity
                 {
@@ -464,7 +479,7 @@ fn restart_game(
         game_state.snake_segments.push(head_entity);
 
         // Spawn new food (pass initial snake position)
-        spawn_food(&mut commands, &[Position { x: 3, y: 3 }]);
+        spawn_food(&mut commands, &[INITIAL_SNAKE_POSITION]);
     }
 }
 
