@@ -76,8 +76,8 @@ impl Default for GameState {
     }
 }
 
-// Event triggered when snake moves
-#[derive(Event)]
+// Message triggered when snake grows
+#[derive(Message)]
 struct GrowthEvent;
 
 fn main() {
@@ -85,8 +85,8 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 resolution: WindowResolution::new(
-                    ARENA_WIDTH as f32 * CELL_SIZE + 20.0,
-                    ARENA_HEIGHT as f32 * CELL_SIZE + 20.0,
+                    (ARENA_WIDTH as f32 * CELL_SIZE + 20.0) as u32,
+                    (ARENA_HEIGHT as f32 * CELL_SIZE + 20.0) as u32,
                 ),
                 title: "Snake Game".to_string(),
                 ..Default::default()
@@ -95,20 +95,21 @@ fn main() {
         }))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .init_resource::<GameState>()
-        .add_event::<GrowthEvent>()
+        .add_message::<GrowthEvent>()
         .add_systems(Startup, setup_system)
         .add_systems(
             Update,
             (
-                snake_movement_input.before(snake_movement),
+                snake_movement_input,
                 snake_movement.run_if(on_timer(MOVE_INTERVAL)),
-                food_collision.after(snake_movement),
-                snake_growth.after(food_collision),
+                food_collision,
+                snake_growth,
                 position_translation,
-                game_over_check.after(snake_movement),
+                game_over_check,
                 restart_game,
-                update_score_text.after(food_collision),
-            ),
+                update_score_text,
+            )
+                .chain(),
         )
         .run();
 }
@@ -219,7 +220,7 @@ fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
 
 fn spawn_food(commands: &mut Commands) {
     let mut rng = rand::rng();
-    let x = rng.random_range(0..ARENA_WIDTH) as i32;
+    let x = rng.random_range(3..ARENA_WIDTH) as i32;
     let y = rng.random_range(0..ARENA_HEIGHT) as i32;
 
     commands.spawn((
@@ -333,7 +334,7 @@ fn snake_movement(
 
 fn food_collision(
     mut commands: Commands,
-    mut growth_writer: EventWriter<GrowthEvent>,
+    mut growth_writer: MessageWriter<GrowthEvent>,
     mut game_state: ResMut<GameState>,
     head_positions: Query<&Position, With<SnakeHead>>,
     food_positions: Query<(Entity, &Position), With<Food>>,
@@ -358,7 +359,7 @@ fn food_collision(
 fn snake_growth(
     mut commands: Commands,
     mut game_state: ResMut<GameState>,
-    mut growth_reader: EventReader<GrowthEvent>,
+    mut growth_reader: MessageReader<GrowthEvent>,
     positions: Query<&Position>,
 ) {
     if growth_reader.read().next().is_some() {
