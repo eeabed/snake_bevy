@@ -162,8 +162,8 @@ fn setup_system(
     let head_entity = spawn_snake_head(&mut commands);
     game_state.snake_segments.push(head_entity);
 
-    // Spawn initial food
-    spawn_food(&mut commands);
+    // Spawn initial food (pass initial snake position)
+    spawn_food(&mut commands, &[Position { x: 3, y: 3 }]);
 
     // Force immediate position update
     commands.queue(move |world: &mut World| {
@@ -218,10 +218,22 @@ fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
         .id()
 }
 
-fn spawn_food(commands: &mut Commands) {
+fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
     let mut rng = rand::rng();
-    let x = rng.random_range(3..ARENA_WIDTH) as i32;
-    let y = rng.random_range(0..ARENA_HEIGHT) as i32;
+    let mut position;
+
+    // Keep generating positions until we find one that doesn't overlap with the snake
+    loop {
+        position = Position {
+            x: rng.random_range(0..ARENA_WIDTH as i32),
+            y: rng.random_range(0..ARENA_HEIGHT as i32),
+        };
+
+        // Check if this position overlaps with any snake segment
+        if !snake_positions.contains(&position) {
+            break;
+        }
+    }
 
     commands.spawn((
         Sprite {
@@ -231,7 +243,7 @@ fn spawn_food(commands: &mut Commands) {
         },
         Transform::default(),
         Food,
-        Position { x, y },
+        position,
     ));
 }
 
@@ -338,6 +350,7 @@ fn food_collision(
     mut game_state: ResMut<GameState>,
     head_positions: Query<&Position, With<SnakeHead>>,
     food_positions: Query<(Entity, &Position), With<Food>>,
+    all_snake_positions: Query<&Position, Or<(With<SnakeHead>, With<SnakeSegment>)>>,
 ) {
     if game_state.game_over {
         return;
@@ -350,7 +363,10 @@ fn food_collision(
                 game_state.just_eaten = true;
                 game_state.score += 1;
                 growth_writer.write(GrowthEvent);
-                spawn_food(&mut commands);
+
+                // Collect all snake positions to avoid spawning food on the snake
+                let snake_positions: Vec<Position> = all_snake_positions.iter().copied().collect();
+                spawn_food(&mut commands, &snake_positions);
             }
         }
     }
@@ -447,8 +463,8 @@ fn restart_game(
         let head_entity = spawn_snake_head(&mut commands);
         game_state.snake_segments.push(head_entity);
 
-        // Spawn new food
-        spawn_food(&mut commands);
+        // Spawn new food (pass initial snake position)
+        spawn_food(&mut commands, &[Position { x: 3, y: 3 }]);
     }
 }
 
