@@ -252,15 +252,18 @@ fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
     let mut rng = rand::rng();
     let mut position;
 
-    // Keep generating positions until we find one that doesn't overlap with the snake
+    // Keep generating positions until we find one that doesn't overlap with the snake or score display
     loop {
         position = Position {
             x: rng.random_range(0..ARENA_WIDTH as i32),
             y: rng.random_range(0..ARENA_HEIGHT as i32),
         };
 
-        // Check if this position overlaps with any snake segment
-        if !snake_positions.contains(&position) {
+        // Exclude top-left area where score is displayed (roughly 3x2 cells)
+        let is_score_area = position.x <= 2 && position.y >= (ARENA_HEIGHT as i32 - 2);
+
+        // Check if this position overlaps with any snake segment or the score area
+        if !snake_positions.contains(&position) && !is_score_area {
             break;
         }
     }
