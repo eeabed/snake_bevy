@@ -211,6 +211,9 @@ fn setup_system(
 #[derive(Component)]
 struct ScoreText;
 
+#[derive(Component)]
+struct GameOverUI;
+
 fn spawn_snake_head(commands: &mut Commands) -> Entity {
     commands
         .spawn((
@@ -436,9 +439,11 @@ fn position_translation(
 }
 
 fn game_over_check(
+    mut commands: Commands,
     mut game_state: ResMut<GameState>,
     head_positions: Query<&Position, With<SnakeHead>>,
     segment_positions: Query<(&Position, Entity), With<SnakeSegment>>,
+    asset_server: Res<AssetServer>,
 ) {
     if game_state.game_over {
         return;
@@ -452,10 +457,73 @@ fn game_over_check(
                 {
                     game_state.game_over = true;
                     println!("Game Over! Final score: {}", game_state.score);
+
+                    // Spawn game over overlay
+                    spawn_game_over_screen(&mut commands, &asset_server, game_state.score);
                 }
             }
         }
     }
+}
+
+fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServer>, score: usize) {
+    // Semi-transparent dark overlay
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            GameOverUI,
+        ))
+        .with_children(|parent| {
+            // "GAME OVER" text
+            parent.spawn((
+                Text::from("GAME OVER"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 60.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 0.3, 0.3, 1.0)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(20.0)),
+                    ..default()
+                },
+            ));
+
+            // Final score text
+            parent.spawn((
+                Text::from(format!("Final Score: {}", score)),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 30.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                Node {
+                    margin: UiRect::bottom(Val::Px(30.0)),
+                    ..default()
+                },
+            ));
+
+            // Restart instructions
+            parent.spawn((
+                Text::from("Press SPACE to restart"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 20.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+            ));
+        });
 }
 
 fn restart_game(
@@ -464,11 +532,18 @@ fn restart_game(
     mut game_state: ResMut<GameState>,
     segments: Query<Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>,
     food: Query<Entity, With<Food>>,
+    game_over_ui: Query<Entity, With<GameOverUI>>,
     _asset_server: Res<AssetServer>,
 ) {
     if game_state.game_over && keyboard_input.just_pressed(KeyCode::Space) {
         // Despawn all existing snake segments and food
         for entity in segments.iter().chain(food.iter()) {
+            commands.entity(entity).despawn();
+        }
+
+        // Despawn game over UI (despawn children first, then parent)
+        for entity in game_over_ui.iter() {
+            commands.entity(entity).despawn_children();
             commands.entity(entity).despawn();
         }
 
