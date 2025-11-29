@@ -88,12 +88,22 @@ impl Direction {
     }
 }
 
+// Game phase enum to track which state the game is in
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+enum GamePhase {
+    #[default]
+    Menu,
+    Playing,
+    GameOver,
+}
+
 // Game state resource
 #[derive(Resource)]
 struct GameState {
     snake_segments: Vec<Entity>,
     score: usize,
     game_over: bool,
+    phase: GamePhase,
 }
 
 impl Default for GameState {
@@ -102,6 +112,7 @@ impl Default for GameState {
             snake_segments: Vec::new(),
             score: 0,
             game_over: false,
+            phase: GamePhase::Menu,
         }
     }
 }
@@ -158,6 +169,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                start_game_from_menu,
                 snake_movement_input,
                 snake_movement.run_if(on_timer(MOVE_INTERVAL)),
                 food_collision,
@@ -174,7 +186,7 @@ fn main() {
 
 fn setup_system(
     mut commands: Commands,
-    mut game_state: ResMut<GameState>,
+    game_state: ResMut<GameState>,
     asset_server: Res<AssetServer>,
 ) {
     // Setup camera
@@ -193,7 +205,7 @@ fn setup_system(
         Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
     ));
 
-    // Score text
+    // Score text (initially hidden until game starts)
     commands.spawn((
         Text::from("Score: 0"),
         TextFont {
@@ -212,28 +224,10 @@ fn setup_system(
         ScoreText,
     ));
 
-    // Spawn initial snake
-    game_state.snake_segments.clear();
-    game_state.score = 0;
-    game_state.game_over = false;
-
-    let head_entity = spawn_snake_head(&mut commands);
-    game_state.snake_segments.push(head_entity);
-
-    // Spawn initial food (pass initial snake position)
-    spawn_food(&mut commands, &[INITIAL_SNAKE_POSITION]);
-
-    // Force immediate position update
-    commands.queue(move |world: &mut World| {
-        let mut position_query = world.query::<(&Position, &mut Transform)>();
-        for (pos, mut transform) in position_query.iter_mut(world) {
-            transform.translation = Vec3::new(
-                (pos.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
-                (pos.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
-                1.0, // Set z-index to 1.0 to ensure it renders above background
-            );
-        }
-    });
+    // Show start menu if we're in the Menu phase
+    if game_state.phase == GamePhase::Menu {
+        spawn_start_menu(&mut commands, &asset_server);
+    }
 }
 
 #[derive(Component)]
@@ -241,6 +235,9 @@ struct ScoreText;
 
 #[derive(Component)]
 struct GameOverUI;
+
+#[derive(Component)]
+struct MenuUI;
 
 fn spawn_snake_head(commands: &mut Commands) -> Entity {
     commands
@@ -315,7 +312,12 @@ fn snake_movement_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut input_buffer: ResMut<InputBuffer>,
     heads: Query<&SnakeHead>,
+    game_state: Res<GameState>,
 ) {
+    if game_state.phase != GamePhase::Playing {
+        return;
+    }
+
     if let Some(head) = heads.iter().next() {
         // Get the last direction in buffer or current head direction
         let last_direction = input_buffer
@@ -343,7 +345,7 @@ fn snake_movement(
     )>,
     _segments: Query<Entity, With<SnakeSegment>>,
 ) {
-    if game_state.game_over {
+    if game_state.phase != GamePhase::Playing {
         return;
     }
 
@@ -417,7 +419,7 @@ fn food_collision(
     food_positions: Query<(Entity, &Position), With<Food>>,
     all_snake_positions: Query<&Position, Or<(With<SnakeHead>, With<SnakeSegment>)>>,
 ) {
-    if game_state.game_over {
+    if game_state.phase != GamePhase::Playing {
         return;
     }
 
@@ -488,7 +490,7 @@ fn game_over_check(
     segment_positions: Query<(&Position, Entity), With<SnakeSegment>>,
     asset_server: Res<AssetServer>,
 ) {
-    if game_state.game_over {
+    if game_state.phase != GamePhase::Playing {
         return;
     }
 
@@ -499,6 +501,7 @@ fn game_over_check(
                     && game_state.snake_segments[1] != segment_entity
                 {
                     game_state.game_over = true;
+                    game_state.phase = GamePhase::GameOver;
                     println!("Game Over! Final score: {}", game_state.score);
 
                     // Spawn game over overlay
@@ -569,6 +572,136 @@ fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServe
         });
 }
 
+fn start_game_from_menu(
+    mut commands: Commands,
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut game_state: ResMut<GameState>,
+    menu_ui: Query<Entity, With<MenuUI>>,
+) {
+    if game_state.phase == GamePhase::Menu && keyboard_input.just_pressed(KeyCode::Space) {
+        // Despawn menu UI
+        for entity in menu_ui.iter() {
+            commands.entity(entity).despawn_children();
+            commands.entity(entity).despawn();
+        }
+
+        // Initialize game state
+        game_state.snake_segments.clear();
+        game_state.score = 0;
+        game_state.game_over = false;
+        game_state.phase = GamePhase::Playing;
+
+        // Spawn initial snake
+        let head_entity = spawn_snake_head(&mut commands);
+        game_state.snake_segments.push(head_entity);
+
+        // Spawn initial food
+        spawn_food(&mut commands, &[INITIAL_SNAKE_POSITION]);
+    }
+}
+
+fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
+    // Semi-transparent dark overlay
+    commands
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                flex_direction: FlexDirection::Column,
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
+            MenuUI,
+        ))
+        .with_children(|parent| {
+            // "SNAKE" title
+            parent.spawn((
+                Text::from("SNAKE"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 80.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.3, 1.0, 0.3, 1.0)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(40.0)),
+                    ..default()
+                },
+            ));
+
+            // Controls section
+            parent.spawn((
+                Text::from("CONTROLS"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 24.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                Node {
+                    margin: UiRect::bottom(Val::Px(15.0)),
+                    ..default()
+                },
+            ));
+
+            parent.spawn((
+                Text::from("Arrow Keys or WASD to move"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(10.0)),
+                    ..default()
+                },
+            ));
+
+            parent.spawn((
+                Text::from("Eat the red apples to grow"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(10.0)),
+                    ..default()
+                },
+            ));
+
+            parent.spawn((
+                Text::from("Don't run into yourself!"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 18.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+                Node {
+                    margin: UiRect::bottom(Val::Px(40.0)),
+                    ..default()
+                },
+            ));
+
+            // Start instructions
+            parent.spawn((
+                Text::from("Press SPACE to start"),
+                TextFont {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 24.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 0.3, 1.0)),
+            ));
+        });
+}
+
 fn restart_game(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -579,7 +712,7 @@ fn restart_game(
     game_over_ui: Query<Entity, With<GameOverUI>>,
     _asset_server: Res<AssetServer>,
 ) {
-    if game_state.game_over && keyboard_input.just_pressed(KeyCode::Space) {
+    if game_state.phase == GamePhase::GameOver && keyboard_input.just_pressed(KeyCode::Space) {
         // Despawn all existing snake segments and food
         for entity in segments.iter().chain(food.iter()) {
             commands.entity(entity).despawn();
@@ -595,6 +728,7 @@ fn restart_game(
         game_state.snake_segments.clear();
         game_state.score = 0;
         game_state.game_over = false;
+        game_state.phase = GamePhase::Playing;
 
         // Clear input buffer
         input_buffer.clear();
