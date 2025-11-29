@@ -1,6 +1,6 @@
 # Snake Game in Rust with Bevy
 
-A simple Snake game implemented in Rust using the Bevy game engine, written entirely by _Claud Desktop_ with _Desktop Commander MCP_, including this README file.
+A simple Snake game implemented in Rust using the Bevy game engine, initially written entirely by _Claud Desktop_ with _Desktop Commander MCP_. Later updates were made using _Claude Code_. 
 
 ![Game Screenshot](screenshot.png)
 
@@ -37,9 +37,9 @@ A simple Snake game implemented in Rust using the Bevy game engine, written enti
 
 ## Dependencies
 
-- Rust 1.86.0
-- Bevy 0.16.0
-- rand 0.9.1
+- Rust 1.91.1
+- Bevy 0.17.3
+- rand 0.9.2
 
 ## Project Structure
 
