@@ -306,10 +306,9 @@ fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
         }
     }
 
-    let shape = shapes::Rectangle {
-        extents: Vec2::splat(CELL_SIZE),
-        origin: RectangleOrigin::Center,
-        radii: Some(BorderRadii::single(CORNER_RADIUS)),
+    let shape = shapes::Circle {
+        radius: CELL_SIZE / 2.0,
+        center: Vec2::ZERO,
     };
 
     let mut entity_commands =
