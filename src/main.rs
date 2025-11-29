@@ -211,7 +211,7 @@ fn setup_system(
     asset_server: Res<AssetServer>,
 ) {
     // Setup camera
-    commands.spawn(Camera2d::default());
+    commands.spawn(Camera2d);
 
     // Arena background
     commands.spawn((
@@ -481,14 +481,12 @@ fn snake_growth(
     mut growth_reader: MessageReader<GrowthEvent>,
     positions: Query<&Position>,
 ) {
-    if growth_reader.read().next().is_some() {
-        if let Some(&last_segment_entity) = game_state.snake_segments.last() {
-            if let Ok(last_pos) = positions.get(last_segment_entity) {
+    if growth_reader.read().next().is_some()
+        && let Some(&last_segment_entity) = game_state.snake_segments.last()
+            && let Ok(last_pos) = positions.get(last_segment_entity) {
                 let new_segment = spawn_snake_segment(&mut commands, *last_pos);
                 game_state.snake_segments.push(new_segment);
             }
-        }
-    }
 }
 
 fn update_move_timer(mut move_timer: ResMut<MoveTimer>, time: Res<Time>) {
@@ -571,8 +569,8 @@ fn game_over_check(
 
     if let Some(head_pos) = head_positions.iter().next() {
         for (segment_pos, segment_entity) in segment_positions.iter() {
-            if head_pos.collides_with(segment_pos) {
-                if game_state.snake_segments.len() > 1
+            if head_pos.collides_with(segment_pos)
+                && game_state.snake_segments.len() > 1
                     && game_state.snake_segments[1] != segment_entity
                 {
                     game_state.game_over = true;
@@ -582,7 +580,6 @@ fn game_over_check(
                     // Spawn game over overlay
                     spawn_game_over_screen(&mut commands, &asset_server, game_state.score);
                 }
-            }
         }
     }
 }
