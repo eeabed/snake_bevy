@@ -1,6 +1,7 @@
 use bevy::{
     ecs::system::ParamSet, prelude::*, time::common_conditions::on_timer, window::WindowResolution,
 };
+use bevy_prototype_lyon::prelude::*;
 use rand::prelude::*;
 use std::time::Duration;
 
@@ -13,6 +14,7 @@ const FOOD_COLOR: Color = Color::srgba(1.0, 0.0, 0.0, 1.0);
 const ARENA_COLOR: Color = Color::srgba(0.1, 0.1, 0.1, 1.0);
 const BACKGROUND_COLOR: Color = Color::srgba(0.04, 0.04, 0.04, 1.0);
 const CELL_SIZE: f32 = 25.0;
+const CORNER_RADIUS: f32 = 4.0; // Rounded corner radius
 const MOVE_INTERVAL: Duration = Duration::from_millis(150);
 const INITIAL_SNAKE_POSITION: Position = Position { x: 3, y: 3 };
 
@@ -150,17 +152,20 @@ struct GrowthEvent;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                resolution: WindowResolution::new(
-                    (ARENA_WIDTH as f32 * CELL_SIZE + 20.0) as u32,
-                    (ARENA_HEIGHT as f32 * CELL_SIZE + 20.0) as u32,
-                ),
-                title: "Snake Game".to_string(),
-                ..Default::default()
+        .add_plugins((
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    resolution: WindowResolution::new(
+                        (ARENA_WIDTH as f32 * CELL_SIZE + 20.0) as u32,
+                        (ARENA_HEIGHT as f32 * CELL_SIZE + 20.0) as u32,
+                    ),
+                    title: "Snake Game".to_string(),
+                    ..Default::default()
+                }),
+                ..default()
             }),
-            ..default()
-        }))
+            ShapePlugin,
+        ))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .init_resource::<GameState>()
         .init_resource::<InputBuffer>()
@@ -240,40 +245,45 @@ struct GameOverUI;
 struct MenuUI;
 
 fn spawn_snake_head(commands: &mut Commands) -> Entity {
-    commands
-        .spawn((
-            Sprite {
-                color: SNAKE_HEAD_COLOR,
-                custom_size: Some(Vec2::new(CELL_SIZE * 0.9, CELL_SIZE * 0.9)), // Slightly smaller for visual clarity
-                ..default()
-            },
-            // Pre-position it properly in the center of the grid
-            Transform::from_xyz(
-                (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
-                (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
-                2.0, // Higher z-index to ensure visibility
-            ),
-            SnakeHead {
-                direction: Direction::Right,
-            },
-            INITIAL_SNAKE_POSITION,
-        ))
-        .id()
+    let size = CELL_SIZE * 0.9;
+    let shape = shapes::Rectangle {
+        extents: Vec2::splat(size),
+        origin: RectangleOrigin::Center,
+        radii: Some(BorderRadii::single(CORNER_RADIUS)),
+    };
+
+    let mut entity_commands = commands.spawn((
+        ShapeBuilder::with(&shape).fill(SNAKE_HEAD_COLOR).build(),
+        Transform::from_xyz(
+            (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
+            (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
+            Z_SNAKE_HEAD,
+        ),
+    ));
+
+    entity_commands.insert((
+        SnakeHead {
+            direction: Direction::Right,
+        },
+        INITIAL_SNAKE_POSITION,
+    ));
+
+    entity_commands.id()
 }
 
 fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
-    commands
-        .spawn((
-            Sprite {
-                color: SNAKE_SEGMENT_COLOR,
-                custom_size: Some(Vec2::new(CELL_SIZE, CELL_SIZE)),
-                ..default()
-            },
-            Transform::default(),
-            SnakeSegment,
-            position,
-        ))
-        .id()
+    let shape = shapes::Rectangle {
+        extents: Vec2::splat(CELL_SIZE),
+        origin: RectangleOrigin::Center,
+        radii: Some(BorderRadii::single(CORNER_RADIUS)),
+    };
+
+    let mut entity_commands =
+        commands.spawn((ShapeBuilder::with(&shape).fill(SNAKE_SEGMENT_COLOR).build(),));
+
+    entity_commands.insert((SnakeSegment, position));
+
+    entity_commands.id()
 }
 
 fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
@@ -296,16 +306,16 @@ fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
         }
     }
 
-    commands.spawn((
-        Sprite {
-            color: FOOD_COLOR,
-            custom_size: Some(Vec2::new(CELL_SIZE, CELL_SIZE)),
-            ..default()
-        },
-        Transform::default(),
-        Food,
-        position,
-    ));
+    let shape = shapes::Rectangle {
+        extents: Vec2::splat(CELL_SIZE),
+        origin: RectangleOrigin::Center,
+        radii: Some(BorderRadii::single(CORNER_RADIUS)),
+    };
+
+    let mut entity_commands =
+        commands.spawn((ShapeBuilder::with(&shape).fill(FOOD_COLOR).build(),));
+
+    entity_commands.insert((Food, position));
 }
 
 fn snake_movement_input(
