@@ -24,6 +24,34 @@ const CORNER_RADIUS: f32 = 4.0; // Rounded corner radius
 const MOVE_INTERVAL: Duration = Duration::from_millis(150);
 const INITIAL_SNAKE_POSITION: Position = Position { x: 3, y: 3 };
 
+// Type aliases for complex queries
+type SnakeHeadQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static mut SnakeHead,
+        &'static mut Position,
+        &'static mut PreviousPosition,
+    ),
+>;
+type PositionQuery<'w, 's> = Query<'w, 's, (&'static mut Position, &'static mut PreviousPosition)>;
+type SnakePartsQuery<'w, 's> =
+    Query<'w, 's, &'static Position, Or<(With<SnakeHead>, With<SnakeSegment>)>>;
+type SnakeEntityQuery<'w, 's> = Query<'w, 's, Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>;
+type TransformInterpolationQuery<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Position,
+        &'static PreviousPosition,
+        &'static mut Transform,
+        Option<&'static SnakeHead>,
+        Option<&'static SnakeSegment>,
+        Option<&'static Food>,
+    ),
+>;
+
 // Z-index constants for rendering layers
 const Z_BACKGROUND: f32 = 0.0;
 const Z_FOOD: f32 = 1.0;
@@ -368,10 +396,7 @@ fn snake_movement(
     game_state: ResMut<GameState>,
     mut input_buffer: ResMut<InputBuffer>,
     mut move_timer: ResMut<MoveTimer>,
-    mut query_set: ParamSet<(
-        Query<(Entity, &mut SnakeHead, &mut Position, &mut PreviousPosition)>,
-        Query<(&mut Position, &mut PreviousPosition)>,
-    )>,
+    mut query_set: ParamSet<(SnakeHeadQuery, PositionQuery)>,
     _segments: Query<Entity, With<SnakeSegment>>,
 ) {
     if game_state.phase != GamePhase::Playing {
@@ -454,7 +479,7 @@ fn food_collision(
     mut game_state: ResMut<GameState>,
     head_positions: Query<&Position, With<SnakeHead>>,
     food_positions: Query<(Entity, &Position), With<Food>>,
-    all_snake_positions: Query<&Position, Or<(With<SnakeHead>, With<SnakeSegment>)>>,
+    all_snake_positions: SnakePartsQuery,
 ) {
     if game_state.phase != GamePhase::Playing {
         return;
@@ -483,27 +508,18 @@ fn snake_growth(
 ) {
     if growth_reader.read().next().is_some()
         && let Some(&last_segment_entity) = game_state.snake_segments.last()
-            && let Ok(last_pos) = positions.get(last_segment_entity) {
-                let new_segment = spawn_snake_segment(&mut commands, *last_pos);
-                game_state.snake_segments.push(new_segment);
-            }
+        && let Ok(last_pos) = positions.get(last_segment_entity)
+    {
+        let new_segment = spawn_snake_segment(&mut commands, *last_pos);
+        game_state.snake_segments.push(new_segment);
+    }
 }
 
 fn update_move_timer(mut move_timer: ResMut<MoveTimer>, time: Res<Time>) {
     move_timer.elapsed += time.delta();
 }
 
-fn position_translation(
-    mut transforms: Query<(
-        &Position,
-        &PreviousPosition,
-        &mut Transform,
-        Option<&SnakeHead>,
-        Option<&SnakeSegment>,
-        Option<&Food>,
-    )>,
-    move_timer: Res<MoveTimer>,
-) {
+fn position_translation(mut transforms: TransformInterpolationQuery, move_timer: Res<MoveTimer>) {
     // Calculate interpolation progress (0.0 to 1.0)
     let progress = (move_timer.elapsed.as_secs_f32() / MOVE_INTERVAL.as_secs_f32()).min(1.0);
 
@@ -571,15 +587,15 @@ fn game_over_check(
         for (segment_pos, segment_entity) in segment_positions.iter() {
             if head_pos.collides_with(segment_pos)
                 && game_state.snake_segments.len() > 1
-                    && game_state.snake_segments[1] != segment_entity
-                {
-                    game_state.game_over = true;
-                    game_state.phase = GamePhase::GameOver;
-                    println!("Game Over! Final score: {}", game_state.score);
+                && game_state.snake_segments[1] != segment_entity
+            {
+                game_state.game_over = true;
+                game_state.phase = GamePhase::GameOver;
+                println!("Game Over! Final score: {}", game_state.score);
 
-                    // Spawn game over overlay
-                    spawn_game_over_screen(&mut commands, &asset_server, game_state.score);
-                }
+                // Spawn game over overlay
+                spawn_game_over_screen(&mut commands, &asset_server, game_state.score);
+            }
         }
     }
 }
@@ -778,13 +794,14 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
         });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn restart_game(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut game_state: ResMut<GameState>,
     mut input_buffer: ResMut<InputBuffer>,
     mut move_timer: ResMut<MoveTimer>,
-    segments: Query<Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>,
+    segments: SnakeEntityQuery,
     food: Query<Entity, With<Food>>,
     game_over_ui: Query<Entity, With<GameOverUI>>,
     _asset_server: Res<AssetServer>,
