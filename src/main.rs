@@ -106,6 +106,33 @@ impl Default for GameState {
     }
 }
 
+// Input buffer to queue direction changes
+#[derive(Resource, Default)]
+struct InputBuffer {
+    queued_directions: Vec<Direction>,
+}
+
+impl InputBuffer {
+    fn queue_direction(&mut self, direction: Direction) {
+        // Only store up to 2 buffered inputs
+        if self.queued_directions.len() < 2 {
+            self.queued_directions.push(direction);
+        }
+    }
+
+    fn pop_direction(&mut self) -> Option<Direction> {
+        if !self.queued_directions.is_empty() {
+            Some(self.queued_directions.remove(0))
+        } else {
+            None
+        }
+    }
+
+    fn clear(&mut self) {
+        self.queued_directions.clear();
+    }
+}
+
 // Message triggered when snake grows
 #[derive(Message)]
 struct GrowthEvent;
@@ -125,6 +152,7 @@ fn main() {
         }))
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .init_resource::<GameState>()
+        .init_resource::<InputBuffer>()
         .add_message::<GrowthEvent>()
         .add_systems(Startup, setup_system)
         .add_systems(
@@ -285,22 +313,32 @@ fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
 
 fn snake_movement_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut heads: Query<&mut SnakeHead>,
+    mut input_buffer: ResMut<InputBuffer>,
+    heads: Query<&SnakeHead>,
 ) {
-    if let Some(mut head) = heads.iter_mut().next() {
-        let new_direction = Direction::from_input(&keyboard_input, head.direction);
+    if let Some(head) = heads.iter().next() {
+        // Get the last direction in buffer or current head direction
+        let last_direction = input_buffer
+            .queued_directions
+            .last()
+            .copied()
+            .unwrap_or(head.direction);
 
-        // Prevent the snake from reversing direction
-        if new_direction != head.direction.opposite() {
-            head.direction = new_direction;
+        // Get new direction from input
+        let new_direction = Direction::from_input(&keyboard_input, last_direction);
+
+        // If direction changed and it's not opposite to the last direction, queue it
+        if new_direction != last_direction && new_direction != last_direction.opposite() {
+            input_buffer.queue_direction(new_direction);
         }
     }
 }
 
 fn snake_movement(
     game_state: ResMut<GameState>,
+    mut input_buffer: ResMut<InputBuffer>,
     mut query_set: ParamSet<(
-        Query<(Entity, &SnakeHead, &mut Position)>,
+        Query<(Entity, &mut SnakeHead, &mut Position)>,
         Query<&mut Position>,
     )>,
     _segments: Query<Entity, With<SnakeSegment>>,
@@ -310,10 +348,15 @@ fn snake_movement(
     }
 
     // Step 1: Get the head entity and its current direction and position
+    // Also consume buffered input if available
     // We use ParamSet because we need to query positions mutably in multiple steps
     let (head_entity, head_direction, head_position) = {
         let mut heads_query = query_set.p0();
-        if let Some((entity, head, position)) = heads_query.iter_mut().next() {
+        if let Some((entity, mut head, position)) = heads_query.iter_mut().next() {
+            // Try to consume buffered direction
+            if let Some(buffered_direction) = input_buffer.pop_direction() {
+                head.direction = buffered_direction;
+            }
             (entity, head.direction, *position)
         } else {
             return; // No head found, exit early
@@ -530,6 +573,7 @@ fn restart_game(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut game_state: ResMut<GameState>,
+    mut input_buffer: ResMut<InputBuffer>,
     segments: Query<Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>,
     food: Query<Entity, With<Food>>,
     game_over_ui: Query<Entity, With<GameOverUI>>,
@@ -551,6 +595,9 @@ fn restart_game(
         game_state.snake_segments.clear();
         game_state.score = 0;
         game_state.game_over = false;
+
+        // Clear input buffer
+        input_buffer.clear();
 
         // Spawn new snake head
         let head_entity = spawn_snake_head(&mut commands);
