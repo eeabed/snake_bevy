@@ -64,6 +64,10 @@ struct SnakeHead {
     direction: Direction,
 }
 
+// Component to mark snake head eyes (children of head)
+#[derive(Component)]
+struct SnakeEye;
+
 // Component to mark snake body segments
 #[derive(Component)]
 struct SnakeSegment;
@@ -184,10 +188,43 @@ impl InputBuffer {
 #[derive(Message)]
 struct GrowthEvent;
 
+// Message triggered when food is eaten (for visual effects)
+#[derive(Message)]
+struct FoodEatenEvent {
+    position: Position,
+}
+
+// Component for entities that should flash/pulse
+#[derive(Component)]
+struct PulseEffect {
+    timer: Timer,
+    start_scale: f32,
+    end_scale: f32,
+}
+
+// Component for food pulsing animation
+#[derive(Component)]
+struct FoodPulse {
+    timer: Timer,
+}
+
+// Component for animating newly grown segments
+#[derive(Component)]
+struct GrowingSegment {
+    timer: Timer,
+}
+
 // Resource to track time since last move for interpolation
 #[derive(Resource)]
 struct MoveTimer {
     elapsed: Duration,
+}
+
+// Resource for camera shake effect
+#[derive(Resource)]
+struct CameraShake {
+    timer: Timer,
+    intensity: f32,
 }
 
 fn main() {
@@ -210,9 +247,14 @@ fn main() {
         .insert_resource(MoveTimer {
             elapsed: Duration::ZERO,
         })
+        .insert_resource(CameraShake {
+            timer: Timer::from_seconds(0.0, TimerMode::Once),
+            intensity: 0.0,
+        })
         .init_resource::<GameState>()
         .init_resource::<InputBuffer>()
         .add_message::<GrowthEvent>()
+        .add_message::<FoodEatenEvent>()
         .add_systems(Startup, setup_system)
         .add_systems(
             Update,
@@ -224,9 +266,15 @@ fn main() {
                 food_collision,
                 snake_growth,
                 position_translation,
+                update_head_rotation,
                 game_over_check,
                 restart_game,
                 update_score_text,
+                food_pulse_animation,
+                pulse_effect_system,
+                spawn_food_eaten_effect,
+                camera_shake_system,
+                growing_segment_animation,
             )
                 .chain(),
         )
@@ -296,26 +344,50 @@ fn spawn_snake_head(commands: &mut Commands) -> Entity {
         radii: Some(BorderRadii::single(CORNER_RADIUS)),
     };
 
-    let mut entity_commands = commands.spawn((
-        ShapeBuilder::with(&shape).fill(SNAKE_HEAD_COLOR).build(),
-        Transform::from_xyz(
-            (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
-            (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
-            Z_SNAKE_HEAD,
-        ),
-    ));
+    let head_entity = commands
+        .spawn((
+            ShapeBuilder::with(&shape).fill(SNAKE_HEAD_COLOR).build(),
+            Transform::from_xyz(
+                (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
+                (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
+                Z_SNAKE_HEAD,
+            ),
+            SnakeHead {
+                direction: Direction::Right,
+            },
+            INITIAL_SNAKE_POSITION,
+            PreviousPosition {
+                pos: INITIAL_SNAKE_POSITION,
+            },
+        ))
+        .with_children(|parent| {
+            // Add two eyes to the snake head
+            let eye_shape = shapes::Circle {
+                radius: CELL_SIZE * 0.08,
+                center: Vec2::ZERO,
+            };
 
-    entity_commands.insert((
-        SnakeHead {
-            direction: Direction::Right,
-        },
-        INITIAL_SNAKE_POSITION,
-        PreviousPosition {
-            pos: INITIAL_SNAKE_POSITION,
-        },
-    ));
+            // Right eye (relative to Right direction)
+            parent.spawn((
+                ShapeBuilder::with(&eye_shape)
+                    .fill(Color::srgba(0.0, 0.0, 0.0, 1.0))
+                    .build(),
+                Transform::from_xyz(CELL_SIZE * 0.15, CELL_SIZE * 0.15, 0.1),
+                SnakeEye,
+            ));
 
-    entity_commands.id()
+            // Left eye (relative to Right direction)
+            parent.spawn((
+                ShapeBuilder::with(&eye_shape)
+                    .fill(Color::srgba(0.0, 0.0, 0.0, 1.0))
+                    .build(),
+                Transform::from_xyz(CELL_SIZE * 0.15, -CELL_SIZE * 0.15, 0.1),
+                SnakeEye,
+            ));
+        })
+        .id();
+
+    head_entity
 }
 
 fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
@@ -361,7 +433,14 @@ fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
     let mut entity_commands =
         commands.spawn((ShapeBuilder::with(&shape).fill(FOOD_COLOR).build(),));
 
-    entity_commands.insert((Food, position, PreviousPosition { pos: position }));
+    entity_commands.insert((
+        Food,
+        position,
+        PreviousPosition { pos: position },
+        FoodPulse {
+            timer: Timer::from_seconds(0.8, TimerMode::Repeating),
+        },
+    ));
 }
 
 fn snake_movement_input(
@@ -476,6 +555,7 @@ fn snake_movement(
 fn food_collision(
     mut commands: Commands,
     mut growth_writer: MessageWriter<GrowthEvent>,
+    mut food_eaten_writer: MessageWriter<FoodEatenEvent>,
     mut game_state: ResMut<GameState>,
     head_positions: Query<&Position, With<SnakeHead>>,
     food_positions: Query<(Entity, &Position), With<Food>>,
@@ -491,6 +571,9 @@ fn food_collision(
                 commands.entity(food_entity).despawn();
                 game_state.score += 1;
                 growth_writer.write(GrowthEvent);
+                food_eaten_writer.write(FoodEatenEvent {
+                    position: *food_pos,
+                });
 
                 // Collect all snake positions to avoid spawning food on the snake
                 let snake_positions: Vec<Position> = all_snake_positions.iter().copied().collect();
@@ -511,6 +594,12 @@ fn snake_growth(
         && let Ok(last_pos) = positions.get(last_segment_entity)
     {
         let new_segment = spawn_snake_segment(&mut commands, *last_pos);
+
+        // Add growing animation component
+        commands.entity(new_segment).insert(GrowingSegment {
+            timer: Timer::from_seconds(0.2, TimerMode::Once),
+        });
+
         game_state.snake_segments.push(new_segment);
     }
 }
@@ -575,6 +664,7 @@ fn position_translation(mut transforms: TransformInterpolationQuery, move_timer:
 fn game_over_check(
     mut commands: Commands,
     mut game_state: ResMut<GameState>,
+    mut camera_shake: ResMut<CameraShake>,
     head_positions: Query<&Position, With<SnakeHead>>,
     segment_positions: Query<(&Position, Entity), With<SnakeSegment>>,
     asset_server: Res<AssetServer>,
@@ -592,6 +682,10 @@ fn game_over_check(
                 game_state.game_over = true;
                 game_state.phase = GamePhase::GameOver;
                 println!("Game Over! Final score: {}", game_state.score);
+
+                // Trigger camera shake
+                camera_shake.timer = Timer::from_seconds(0.5, TimerMode::Once);
+                camera_shake.intensity = 8.0;
 
                 // Spawn game over overlay
                 spawn_game_over_screen(&mut commands, &asset_server, game_state.score);
@@ -840,5 +934,139 @@ fn restart_game(
 fn update_score_text(game_state: Res<GameState>, mut query: Query<&mut Text, With<ScoreText>>) {
     if let Ok(mut text) = query.single_mut() {
         *text = Text::from(format!("Score: {}", game_state.score));
+    }
+}
+
+// System to animate food pulsing
+fn food_pulse_animation(
+    time: Res<Time>,
+    mut foods: Query<(&mut Transform, &mut FoodPulse), With<Food>>,
+) {
+    for (mut transform, mut pulse) in foods.iter_mut() {
+        pulse.timer.tick(time.delta());
+
+        // Use sine wave for smooth pulsing
+        let progress = pulse.timer.fraction();
+        let scale = 1.0 + (progress * std::f32::consts::PI * 2.0).sin() * 0.15;
+
+        transform.scale = Vec3::splat(scale);
+    }
+}
+
+// System to handle pulse effects (for eaten food flash)
+fn pulse_effect_system(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut effects: Query<(Entity, &mut Transform, &mut PulseEffect)>,
+) {
+    for (entity, mut transform, mut effect) in effects.iter_mut() {
+        effect.timer.tick(time.delta());
+
+        if effect.timer.is_finished() {
+            commands.entity(entity).despawn();
+        } else {
+            let progress = effect.timer.fraction();
+            let scale = effect.start_scale + (effect.end_scale - effect.start_scale) * progress;
+            transform.scale = Vec3::splat(scale);
+
+            // Fade out
+            // Note: We can't easily change color with Lyon shapes, so we just scale
+        }
+    }
+}
+
+// System to spawn visual effect when food is eaten
+fn spawn_food_eaten_effect(
+    mut commands: Commands,
+    mut food_eaten_reader: MessageReader<FoodEatenEvent>,
+) {
+    for event in food_eaten_reader.read() {
+        // Spawn a pulsing circle effect at the food position
+        let shape = shapes::Circle {
+            radius: CELL_SIZE / 2.0,
+            center: Vec2::ZERO,
+        };
+
+        let x = (event.position.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE;
+        let y = (event.position.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE;
+
+        commands.spawn((
+            ShapeBuilder::with(&shape)
+                .fill(Color::srgba(1.0, 1.0, 0.3, 0.8))
+                .build(),
+            Transform::from_xyz(x, y, Z_FOOD + 0.5),
+            PulseEffect {
+                timer: Timer::from_seconds(0.3, TimerMode::Once),
+                start_scale: 1.0,
+                end_scale: 2.5,
+            },
+        ));
+    }
+}
+
+// System to update snake head rotation based on direction
+fn update_head_rotation(mut heads: Query<(&SnakeHead, &mut Transform)>) {
+    for (head, mut transform) in heads.iter_mut() {
+        let rotation = match head.direction {
+            Direction::Right => 0.0,
+            Direction::Up => std::f32::consts::FRAC_PI_2,
+            Direction::Left => std::f32::consts::PI,
+            Direction::Down => -std::f32::consts::FRAC_PI_2,
+        };
+
+        transform.rotation = Quat::from_rotation_z(rotation);
+    }
+}
+
+// System to apply camera shake effect
+fn camera_shake_system(
+    time: Res<Time>,
+    mut camera_shake: ResMut<CameraShake>,
+    mut camera_query: Query<&mut Transform, With<Camera2d>>,
+) {
+    if !camera_shake.timer.is_finished() {
+        camera_shake.timer.tick(time.delta());
+
+        if let Ok(mut camera_transform) = camera_query.single_mut() {
+            if camera_shake.timer.is_finished() {
+                // Reset camera position when shake is done
+                camera_transform.translation.x = 0.0;
+                camera_transform.translation.y = 0.0;
+            } else {
+                // Apply random shake based on intensity
+                let progress = camera_shake.timer.fraction();
+                let decay = 1.0 - progress; // Shake intensity decreases over time
+
+                let mut rng = rand::rng();
+                let shake_x = (rng.random::<f32>() - 0.5) * camera_shake.intensity * decay;
+                let shake_y = (rng.random::<f32>() - 0.5) * camera_shake.intensity * decay;
+
+                camera_transform.translation.x = shake_x;
+                camera_transform.translation.y = shake_y;
+            }
+        }
+    }
+}
+
+// System to animate growing segments
+fn growing_segment_animation(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut growing: Query<(Entity, &mut Transform, &mut GrowingSegment)>,
+) {
+    for (entity, mut transform, mut growing_segment) in growing.iter_mut() {
+        growing_segment.timer.tick(time.delta());
+
+        if growing_segment.timer.is_finished() {
+            // Animation complete - remove component and ensure scale is normal
+            transform.scale = Vec3::splat(1.0);
+            commands.entity(entity).remove::<GrowingSegment>();
+        } else {
+            // Animate from 0 to 1 scale
+            let progress = growing_segment.timer.fraction();
+            // Use ease-out for a bouncy effect
+            let scale = progress * (2.0 - progress);
+            transform.scale = Vec3::splat(scale);
+        }
     }
 }
