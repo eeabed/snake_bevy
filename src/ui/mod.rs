@@ -1,12 +1,17 @@
 //! UI plugin - handles menus, game over screen, score display, and game flow.
 
+use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::render::view::Hdr;
 use std::time::Duration;
+
+use bevy_vector_shapes::prelude::*;
 
 use crate::food::spawn_food;
 use crate::game::{
-    ARENA_COLOR, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, Food, GameOverUI, GamePhase, GameState,
-    INITIAL_SNAKE_POSITION, InputBuffer, MenuUI, MoveTimer, ScoreText, SnakeHead, SnakeSegment,
+    ARENA_BORDER_COLOR, ARENA_COLOR, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, Food, GameOverUI,
+    GamePhase, GameState, INITIAL_SNAKE_POSITION, InputBuffer, MenuUI, MoveTimer, ScoreText,
+    SnakeHead, SnakeSegment,
 };
 use crate::snake::spawn_snake_head;
 
@@ -37,8 +42,18 @@ fn setup_system(
     game_state: ResMut<GameState>,
     asset_server: Res<AssetServer>,
 ) {
-    // Setup camera
-    commands.spawn(Camera2d);
+    // Setup camera with HDR and bloom for glowing effects
+    commands.spawn((
+        Camera2d,
+        Hdr,
+        Bloom {
+            intensity: 0.3,
+            low_frequency_boost: 0.6,
+            low_frequency_boost_curvature: 0.5,
+            high_pass_frequency: 0.8,
+            ..default()
+        },
+    ));
 
     // Arena background
     commands.spawn((
@@ -51,6 +66,22 @@ fn setup_system(
             ..default()
         },
         Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+    ));
+
+    // Glowing arena border using hollow rectangle
+    let arena_width = ARENA_WIDTH as f32 * CELL_SIZE;
+    let arena_height = ARENA_HEIGHT as f32 * CELL_SIZE;
+    commands.spawn(ShapeBundle::rect(
+        &ShapeConfig {
+            color: ARENA_BORDER_COLOR,
+            alpha_mode: ShapeAlphaMode::Add,
+            hollow: true,
+            thickness: 4.0,
+            corner_radii: Vec4::splat(0.02),
+            transform: Transform::from_xyz(0.0, 0.0, 0.1),
+            ..ShapeConfig::default_2d()
+        },
+        Vec2::new(arena_width + 4.0, arena_height + 4.0),
     ));
 
     // Score text (initially hidden until game starts)

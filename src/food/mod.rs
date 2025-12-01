@@ -1,7 +1,7 @@
 //! Food plugin - handles food spawning, collision detection, and related effects.
 
 use bevy::prelude::*;
-use bevy_prototype_lyon::prelude::*;
+use bevy_vector_shapes::prelude::*;
 use rand::prelude::*;
 
 use crate::game::{
@@ -43,13 +43,16 @@ pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
         }
     }
 
-    let shape = shapes::Circle {
-        radius: CELL_SIZE / 2.0,
-        center: Vec2::ZERO,
-    };
+    let radius = CELL_SIZE / 2.0;
 
     commands.spawn((
-        ShapeBuilder::with(&shape).fill(FOOD_COLOR).build(),
+        ShapeBundle::circle(
+            &ShapeConfig {
+                color: FOOD_COLOR,
+                ..ShapeConfig::default_2d()
+            },
+            radius,
+        ),
         Food,
         position,
         PreviousPosition { pos: position },

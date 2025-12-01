@@ -1,13 +1,13 @@
 //! Snake plugin - handles snake movement, input, collision detection, and spawning.
 
 use bevy::{ecs::system::ParamSet, prelude::*, time::common_conditions::on_timer};
-use bevy_prototype_lyon::prelude::*;
+use bevy_vector_shapes::prelude::*;
 
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CORNER_RADIUS, Direction, GamePhase, GameState,
     GrowingSegment, GrowthEvent, INITIAL_SNAKE_POSITION, InputBuffer, MOVE_INTERVAL, MoveTimer,
-    Position, PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_SEGMENT_COLOR, SnakeEye, SnakeHead,
-    SnakeSegment, Z_SNAKE_HEAD,
+    Position, PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_HEAD_GLOW_COLOR, SNAKE_SEGMENT_COLOR,
+    SnakeEye, SnakeHead, SnakeSegment, Z_SNAKE_HEAD,
 };
 
 /// Plugin for snake-related systems.
@@ -44,19 +44,23 @@ type PositionQuery<'w, 's> = Query<'w, 's, (&'static mut Position, &'static mut 
 /// Spawns the snake head entity with eyes.
 pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
     let size = CELL_SIZE * 0.9;
-    let shape = shapes::Rectangle {
-        extents: Vec2::splat(size),
-        origin: RectangleOrigin::Center,
-        radii: Some(BorderRadii::single(CORNER_RADIUS)),
-    };
+    // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
+    let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
 
     commands
         .spawn((
-            ShapeBuilder::with(&shape).fill(SNAKE_HEAD_COLOR).build(),
-            Transform::from_xyz(
-                (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
-                (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
-                Z_SNAKE_HEAD,
+            ShapeBundle::rect(
+                &ShapeConfig {
+                    color: SNAKE_HEAD_COLOR,
+                    corner_radii: Vec4::splat(corner_radius_normalized),
+                    transform: Transform::from_xyz(
+                        (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
+                        (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
+                        Z_SNAKE_HEAD,
+                    ),
+                    ..ShapeConfig::default_2d()
+                },
+                Vec2::splat(size),
             ),
             SnakeHead {
                 direction: Direction::Right,
@@ -67,27 +71,42 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
             },
         ))
         .with_children(|parent| {
-            // Add two eyes to the snake head
-            let eye_shape = shapes::Circle {
-                radius: CELL_SIZE * 0.08,
-                center: Vec2::ZERO,
-            };
+            // Glow effect behind the head (rendered first, behind everything)
+            parent.spawn(ShapeBundle::circle(
+                &ShapeConfig {
+                    color: SNAKE_HEAD_GLOW_COLOR,
+                    alpha_mode: ShapeAlphaMode::Add,
+                    transform: Transform::from_xyz(0.0, 0.0, -0.1),
+                    ..ShapeConfig::default_2d()
+                },
+                CELL_SIZE * 0.8,
+            ));
+
+            let eye_radius = CELL_SIZE * 0.08;
 
             // Right eye (relative to Right direction)
             parent.spawn((
-                ShapeBuilder::with(&eye_shape)
-                    .fill(Color::srgba(0.0, 0.0, 0.0, 1.0))
-                    .build(),
-                Transform::from_xyz(CELL_SIZE * 0.15, CELL_SIZE * 0.15, 0.1),
+                ShapeBundle::circle(
+                    &ShapeConfig {
+                        color: Color::srgba(0.0, 0.0, 0.0, 1.0),
+                        transform: Transform::from_xyz(CELL_SIZE * 0.15, CELL_SIZE * 0.15, 0.1),
+                        ..ShapeConfig::default_2d()
+                    },
+                    eye_radius,
+                ),
                 SnakeEye,
             ));
 
             // Left eye (relative to Right direction)
             parent.spawn((
-                ShapeBuilder::with(&eye_shape)
-                    .fill(Color::srgba(0.0, 0.0, 0.0, 1.0))
-                    .build(),
-                Transform::from_xyz(CELL_SIZE * 0.15, -CELL_SIZE * 0.15, 0.1),
+                ShapeBundle::circle(
+                    &ShapeConfig {
+                        color: Color::srgba(0.0, 0.0, 0.0, 1.0),
+                        transform: Transform::from_xyz(CELL_SIZE * 0.15, -CELL_SIZE * 0.15, 0.1),
+                        ..ShapeConfig::default_2d()
+                    },
+                    eye_radius,
+                ),
                 SnakeEye,
             ));
         })
@@ -96,15 +115,20 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
 
 /// Spawns a snake body segment at the given position.
 pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
-    let shape = shapes::Rectangle {
-        extents: Vec2::splat(CELL_SIZE),
-        origin: RectangleOrigin::Center,
-        radii: Some(BorderRadii::single(CORNER_RADIUS)),
-    };
+    let size = CELL_SIZE;
+    // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
+    let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
 
     commands
         .spawn((
-            ShapeBuilder::with(&shape).fill(SNAKE_SEGMENT_COLOR).build(),
+            ShapeBundle::rect(
+                &ShapeConfig {
+                    color: SNAKE_SEGMENT_COLOR,
+                    corner_radii: Vec4::splat(corner_radius_normalized),
+                    ..ShapeConfig::default_2d()
+                },
+                Vec2::splat(size),
+            ),
             SnakeSegment,
             position,
             PreviousPosition { pos: position },

@@ -1,13 +1,13 @@
 //! Rendering plugin - handles position interpolation, rotation, visual effects, and camera.
 
 use bevy::prelude::*;
-use bevy_prototype_lyon::prelude::*;
+use bevy_vector_shapes::prelude::*;
 use rand::prelude::*;
 
 use crate::game::{
-    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, Food, FoodEatenEvent, GamePhase, GameState,
-    GrowingSegment, MOVE_INTERVAL, MoveTimer, Position, PreviousPosition, PulseEffect, SnakeHead,
-    SnakeSegment, Z_BACKGROUND, Z_FOOD, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
+    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, FOOD_EATEN_COLOR, Food, FoodEatenEvent,
+    GamePhase, GameState, GrowingSegment, MOVE_INTERVAL, MoveTimer, Position, PreviousPosition,
+    PulseEffect, SnakeHead, SnakeSegment, Z_BACKGROUND, Z_FOOD, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
 };
 
 /// Plugin for rendering and visual effects.
@@ -142,23 +142,45 @@ fn spawn_food_eaten_effect(
     mut food_eaten_reader: MessageReader<FoodEatenEvent>,
 ) {
     for event in food_eaten_reader.read() {
-        let shape = shapes::Circle {
-            radius: CELL_SIZE / 2.0,
-            center: Vec2::ZERO,
-        };
-
+        let radius = CELL_SIZE / 2.0;
         let x = (event.position.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE;
         let y = (event.position.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE;
 
+        // Main bright flash with HDR color for bloom glow
         commands.spawn((
-            ShapeBuilder::with(&shape)
-                .fill(Color::srgba(1.0, 1.0, 0.3, 0.8))
-                .build(),
-            Transform::from_xyz(x, y, Z_FOOD + 0.5),
+            ShapeBundle::circle(
+                &ShapeConfig {
+                    color: FOOD_EATEN_COLOR,
+                    alpha_mode: ShapeAlphaMode::Add, // Additive blending for bright glow
+                    transform: Transform::from_xyz(x, y, Z_FOOD + 0.5),
+                    ..ShapeConfig::default_2d()
+                },
+                radius,
+            ),
             PulseEffect {
-                timer: Timer::from_seconds(0.3, TimerMode::Once),
-                start_scale: 1.0,
-                end_scale: 2.5,
+                timer: Timer::from_seconds(0.35, TimerMode::Once),
+                start_scale: 0.8,
+                end_scale: 3.0,
+            },
+        ));
+
+        // Secondary ring effect for extra visual punch
+        commands.spawn((
+            ShapeBundle::circle(
+                &ShapeConfig {
+                    color: Color::srgba(2.0, 1.5, 0.5, 0.5),
+                    alpha_mode: ShapeAlphaMode::Add,
+                    hollow: true,
+                    thickness: 3.0,
+                    transform: Transform::from_xyz(x, y, Z_FOOD + 0.4),
+                    ..ShapeConfig::default_2d()
+                },
+                radius * 0.8,
+            ),
+            PulseEffect {
+                timer: Timer::from_seconds(0.4, TimerMode::Once),
+                start_scale: 0.5,
+                end_scale: 4.0,
             },
         ));
     }

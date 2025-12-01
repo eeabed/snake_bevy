@@ -1,7 +1,7 @@
 //! Snake game built with Bevy.
 
 use bevy::{prelude::*, window::WindowResolution};
-use bevy_prototype_lyon::prelude::*;
+use bevy_vector_shapes::prelude::*;
 
 mod food;
 mod game;
@@ -32,7 +32,7 @@ fn main() {
                 }),
                 ..default()
             }),
-            ShapePlugin,
+            Shape2dPlugin::default(),
         ))
         // Game plugins
         .add_plugins((SnakePlugin, FoodPlugin, RenderingPlugin, UiPlugin))
