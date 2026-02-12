@@ -3,6 +3,7 @@
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::render::view::Hdr;
+use bevy::text::FontWeight;
 use std::time::Duration;
 
 use bevy_vector_shapes::prelude::*;
@@ -37,11 +38,7 @@ impl Plugin for UiPlugin {
 type SnakeEntityQuery<'w, 's> = Query<'w, 's, Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>;
 
 /// Initial setup system - camera, arena, score text.
-fn setup_system(
-    mut commands: Commands,
-    game_state: ResMut<GameState>,
-    asset_server: Res<AssetServer>,
-) {
+fn setup_system(mut commands: Commands, game_state: ResMut<GameState>) {
     // Setup camera with HDR and bloom for glowing effects
     commands.spawn((
         Camera2d,
@@ -88,9 +85,8 @@ fn setup_system(
     commands.spawn((
         Text::from("Score: 0"),
         TextFont {
-            font: asset_server.load("fonts/FiraSans-Bold.ttf"),
             font_size: 20.0,
-            font_smoothing: Default::default(),
+            weight: FontWeight::BOLD,
             ..default()
         },
         TextColor(Color::WHITE),
@@ -105,12 +101,12 @@ fn setup_system(
 
     // Show start menu if we're in the Menu phase
     if game_state.phase == GamePhase::Menu {
-        spawn_start_menu(&mut commands, &asset_server);
+        spawn_start_menu(&mut commands);
     }
 }
 
 /// Spawns the start menu UI.
-fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
+fn spawn_start_menu(commands: &mut Commands) {
     commands
         .spawn((
             Node {
@@ -130,8 +126,8 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             parent.spawn((
                 Text::from("SNAKE"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 80.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(0.3, 1.0, 0.3, 1.0)),
@@ -145,8 +141,8 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             parent.spawn((
                 Text::from("CONTROLS"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 24.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::WHITE),
@@ -159,8 +155,8 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             parent.spawn((
                 Text::from("Arrow Keys or WASD to move"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 18.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
@@ -173,8 +169,8 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             parent.spawn((
                 Text::from("Eat the red apples to grow"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 18.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
@@ -187,8 +183,8 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             parent.spawn((
                 Text::from("Don't run into yourself!"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 18.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
@@ -202,8 +198,8 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             parent.spawn((
                 Text::from("Press SPACE to start"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 24.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(1.0, 1.0, 0.3, 1.0)),
@@ -212,7 +208,7 @@ fn spawn_start_menu(commands: &mut Commands, asset_server: &Res<AssetServer>) {
 }
 
 /// Spawns the game over screen UI.
-fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServer>, score: usize) {
+fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
     commands
         .spawn((
             Node {
@@ -232,8 +228,8 @@ fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServe
             parent.spawn((
                 Text::from("GAME OVER"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 60.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(1.0, 0.3, 0.3, 1.0)),
@@ -247,8 +243,8 @@ fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServe
             parent.spawn((
                 Text::from(format!("Final Score: {}", score)),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 30.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::WHITE),
@@ -262,8 +258,8 @@ fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServe
             parent.spawn((
                 Text::from("Press SPACE to restart"),
                 TextFont {
-                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
                     font_size: 20.0,
+                    weight: FontWeight::BOLD,
                     ..default()
                 },
                 TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
@@ -275,13 +271,12 @@ fn spawn_game_over_screen(commands: &mut Commands, asset_server: &Res<AssetServe
 fn spawn_game_over_screen_system(
     mut commands: Commands,
     game_state: Res<GameState>,
-    asset_server: Res<AssetServer>,
     game_over_ui: Query<Entity, With<GameOverUI>>,
 ) {
     // Only spawn if game just ended and no UI exists yet
     if game_state.is_changed() && game_state.phase == GamePhase::GameOver && game_over_ui.is_empty()
     {
-        spawn_game_over_screen(&mut commands, &asset_server, game_state.score);
+        spawn_game_over_screen(&mut commands, game_state.score);
     }
 }
 
