@@ -291,8 +291,7 @@ fn start_game_from_menu(
     if game_state.phase == GamePhase::Menu && keyboard_input.just_pressed(KeyCode::Space) {
         // Despawn menu UI
         for entity in menu_ui.iter() {
-            commands.entity(entity).despawn_children();
-            commands.entity(entity).despawn();
+            commands.entity(entity).despawn_children().despawn();
         }
 
         // Initialize game state
@@ -333,8 +332,7 @@ fn restart_game(
 
         // Despawn game over UI
         for entity in game_over_ui.iter() {
-            commands.entity(entity).despawn_children();
-            commands.entity(entity).despawn();
+            commands.entity(entity).despawn_children().despawn();
         }
 
         // Reset game state
