@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 bevy = { version = "0.18", default-features = false, features = ["2d", "tonemapping_luts", "zstd_rust"] }
 bevy_vector_shapes = "0.12"
-rand = "0.9.2"
+rand = "0.10"
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
