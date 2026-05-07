@@ -6,7 +6,8 @@ use rand::prelude::*;
 
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, FOOD_COLOR, Food, FoodEatenEvent, FoodPulse, GamePhase,
-    GameSet, GameState, GrowthEvent, Position, PreviousPosition, SnakeHead, SnakeSegment,
+    GameSet, GameState, GrowthEvent, Position, PreviousPosition, SCORE_AREA_COLS, SCORE_AREA_ROWS,
+    SnakeHead, SnakeSegment,
 };
 
 /// Plugin for food-related systems.
@@ -44,7 +45,8 @@ pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
     let free: Vec<Position> = (0..ARENA_WIDTH as i32)
         .flat_map(|x| (0..ARENA_HEIGHT as i32).map(move |y| Position { x, y }))
         .filter(|p| {
-            let is_score_area = p.x <= 2 && p.y >= (ARENA_HEIGHT as i32 - 2);
+            let is_score_area =
+                p.x < SCORE_AREA_COLS && p.y >= (ARENA_HEIGHT as i32 - SCORE_AREA_ROWS);
             !occupied.contains(&(p.x, p.y)) && !is_score_area
         })
         .collect();

@@ -12,7 +12,7 @@ use crate::food::spawn_food;
 use crate::game::{
     ARENA_BORDER_COLOR, ARENA_COLOR, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, Food, GameOverUI,
     GamePhase, GameState, INITIAL_SNAKE_POSITION, InputBuffer, MenuUI, MoveTimer, ScoreText,
-    SnakeHead, SnakeSegment,
+    SnakeHead, SnakeSegment, Z_BACKGROUND,
 };
 use crate::snake::spawn_snake_head;
 
@@ -38,7 +38,7 @@ impl Plugin for UiPlugin {
 type SnakeEntityQuery<'w, 's> = Query<'w, 's, Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>;
 
 /// Initial setup system - camera, arena, score text.
-fn setup_system(mut commands: Commands, game_state: ResMut<GameState>) {
+fn setup_system(mut commands: Commands, game_state: Res<GameState>) {
     // Setup camera with HDR and bloom for glowing effects
     commands.spawn((
         Camera2d,
@@ -62,7 +62,7 @@ fn setup_system(mut commands: Commands, game_state: ResMut<GameState>) {
             )),
             ..default()
         },
-        Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+        Transform::from_translation(Vec3::new(0.0, 0.0, Z_BACKGROUND)),
     ));
 
     // Glowing arena border using hollow rectangle
@@ -291,7 +291,7 @@ fn start_game_from_menu(
     if game_state.phase == GamePhase::Menu && keyboard_input.just_pressed(KeyCode::Space) {
         // Despawn menu UI
         for entity in menu_ui.iter() {
-            commands.entity(entity).despawn_children().despawn();
+            commands.entity(entity).despawn();
         }
 
         // Initialize game state
@@ -331,7 +331,7 @@ fn restart_game(
 
         // Despawn game over UI
         for entity in game_over_ui.iter() {
-            commands.entity(entity).despawn_children().despawn();
+            commands.entity(entity).despawn();
         }
 
         // Reset game state

@@ -5,10 +5,9 @@ use bevy_vector_shapes::prelude::*;
 use rand::prelude::*;
 
 use crate::game::{
-    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, FOOD_EATEN_COLOR, Food, FoodEatenEvent,
-    GamePhase, GameSet, GameState, GrowingSegment, MOVE_INTERVAL, MoveTimer, Position,
-    PreviousPosition, PulseEffect, SnakeHead, SnakeSegment, Z_BACKGROUND, Z_FOOD, Z_SNAKE_HEAD,
-    Z_SNAKE_SEGMENT,
+    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, FOOD_EATEN_COLOR, FoodEatenEvent, GamePhase,
+    GameSet, GameState, GrowingSegment, MOVE_INTERVAL, MoveTimer, Position, PreviousPosition,
+    PulseEffect, SnakeHead, SnakeSegment, Z_FOOD, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
 };
 
 /// Plugin for rendering and visual effects.
@@ -34,7 +33,10 @@ impl Plugin for RenderingPlugin {
     }
 }
 
-// Type alias for transform interpolation query
+// Type alias for transform interpolation query.
+// Every entity matched here carries Position + PreviousPosition, which only
+// SnakeHead, SnakeSegment, and Food entities have. The z-layer is determined
+// by whichever marker component is present; Food is the implicit final case.
 type TransformInterpolationQuery<'w, 's> = Query<
     'w,
     's,
@@ -44,7 +46,6 @@ type TransformInterpolationQuery<'w, 's> = Query<
         &'static mut Transform,
         Option<&'static SnakeHead>,
         Option<&'static SnakeSegment>,
-        Option<&'static Food>,
     ),
 >;
 
@@ -58,16 +59,17 @@ fn position_translation(mut transforms: TransformInterpolationQuery, move_timer:
     // Calculate interpolation progress (0.0 to 1.0)
     let progress = (move_timer.elapsed.as_secs_f32() / MOVE_INTERVAL.as_secs_f32()).min(1.0);
 
-    for (pos, prev_pos, mut transform, head, segment, food) in transforms.iter_mut() {
-        // Set z-index based on entity type to ensure proper layering
+    for (pos, prev_pos, mut transform, head, segment) in transforms.iter_mut() {
+        // Set z-index based on entity type to ensure proper layering.
+        // The query only matches entities with Position + PreviousPosition, which
+        // are exclusively SnakeHead, SnakeSegment, and Food — so the else branch
+        // is the Food case (no dedicated marker component needed in the query).
         let z = if head.is_some() {
             Z_SNAKE_HEAD
         } else if segment.is_some() {
             Z_SNAKE_SEGMENT
-        } else if food.is_some() {
-            Z_FOOD
         } else {
-            Z_BACKGROUND
+            Z_FOOD
         };
 
         // Interpolate between previous and current position

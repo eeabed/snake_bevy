@@ -31,6 +31,11 @@ pub const FOOD_EATEN_COLOR: Color = Color::srgba(3.0, 3.0, 1.0, 0.8); // Bright 
 pub const SNAKE_HEAD_GLOW_COLOR: Color = Color::srgba(0.5, 1.5, 0.5, 0.4); // Subtle green glow
 pub const ARENA_BORDER_COLOR: Color = Color::srgba(0.3, 0.5, 0.8, 0.6); // Blue border glow
 
+// Score-text exclusion zone: cells near the top-left corner that the UI overlaps.
+// Food will not be spawned in the rectangle x ∈ [0, SCORE_AREA_COLS) × y ∈ (ARENA_HEIGHT - SCORE_AREA_ROWS, ARENA_HEIGHT].
+pub const SCORE_AREA_COLS: i32 = 3;
+pub const SCORE_AREA_ROWS: i32 = 2;
+
 // Z-index constants for rendering layers
 pub const Z_BACKGROUND: f32 = 0.0;
 pub const Z_FOOD: f32 = 1.0;

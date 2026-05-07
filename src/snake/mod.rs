@@ -167,11 +167,10 @@ fn snake_movement_input(
 
 /// System to execute snake movement on a timer.
 fn snake_movement(
-    game_state: ResMut<GameState>,
+    game_state: Res<GameState>,
     mut input_buffer: ResMut<InputBuffer>,
     mut move_timer: ResMut<MoveTimer>,
     mut query_set: ParamSet<(SnakeHeadQuery, PositionQuery)>,
-    _segments: Query<Entity, With<SnakeSegment>>,
 ) {
     if game_state.phase != GamePhase::Playing {
         return;
@@ -281,7 +280,7 @@ fn game_over_check(
                 && game_state.snake_segments[1] != segment_entity
             {
                 game_state.phase = GamePhase::GameOver;
-                println!("Game Over! Final score: {}", game_state.score);
+                info!("Game Over! Final score: {}", game_state.score);
             }
         }
     }
