@@ -24,9 +24,18 @@ const TAIL_TAPER: [f32; 3] = [0.65, 0.78, 0.90];
 // `BODY_COLOR_NEAR_HEAD` (segment closest to the head) and
 // `BODY_COLOR_NEAR_TAIL` (the tail) based on its position in the snake.
 // Same hue as `SNAKE_SEGMENT_COLOR`, just brighter near the head and dimmer
-// at the tail to give the snake a sense of direction.
+// at the tail. The tail color is intentionally close to the playfield's
+// background so the tail visually dissolves into the arena.
 const BODY_COLOR_NEAR_HEAD: Color = Color::srgba(0.40, 0.95, 0.40, 1.0);
-const BODY_COLOR_NEAR_TAIL: Color = Color::srgba(0.18, 0.55, 0.18, 1.0);
+const BODY_COLOR_NEAR_TAIL: Color = Color::srgba(0.08, 0.28, 0.08, 1.0);
+
+/// Exponent applied to the gradient parameter `t` (in 0.0..=1.0).
+///
+/// A value > 1 gives a concave-up curve: segments near the head stay close
+/// to `BODY_COLOR_NEAR_HEAD`, then darken faster as they approach the tail.
+/// Visually: a bright, even body up front and a fade that accelerates into
+/// the tail — much more readable per-segment than a linear ramp.
+const BODY_GRADIENT_EXPONENT: f32 = 1.6;
 
 /// Plugin for snake-related systems.
 pub struct SnakePlugin;
@@ -398,11 +407,15 @@ fn style_snake_body(game_state: Res<GameState>, mut segments: BodyStyleQuery) {
 
         // Color gradient: t = 0.0 at the segment closest to the head,
         // t = 1.0 at the tail. Single-segment body collapses to t = 0.0.
-        let t = if body_count <= 1 {
+        // The exponent biases the curve so brightness change-per-segment is
+        // small near the head and large near the tail — perceptually clearer
+        // than a linear ramp on long snakes.
+        let t_linear = if body_count <= 1 {
             0.0
         } else {
             body_index as f32 / (body_count - 1) as f32
         };
+        let t = t_linear.powf(BODY_GRADIENT_EXPONENT);
         let color = lerp_color(BODY_COLOR_NEAR_HEAD, BODY_COLOR_NEAR_TAIL, t);
 
         let Ok((mut transform, mut fill)) = segments.get_mut(entity) else {
