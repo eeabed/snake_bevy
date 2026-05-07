@@ -2,9 +2,11 @@
 
 use bevy::prelude::*;
 use std::collections::VecDeque;
-use std::time::Duration;
 
 use super::Direction;
+
+/// Maximum number of direction changes that can be queued at once.
+pub const INPUT_BUFFER_CAPACITY: usize = 2;
 
 /// Game phase enum to track which state the game is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -13,6 +15,8 @@ pub enum GamePhase {
     Menu,
     Playing,
     GameOver,
+    /// Player filled the entire arena with the snake — win condition.
+    Won,
 }
 
 /// Main game state resource.
@@ -40,9 +44,10 @@ pub struct InputBuffer {
 }
 
 impl InputBuffer {
-    /// Queue a direction change (max 2 buffered inputs).
+    /// Queue a direction change. Drops the input if the buffer is full
+    /// (capacity is [`INPUT_BUFFER_CAPACITY`]).
     pub fn queue_direction(&mut self, direction: Direction) {
-        if self.queued_directions.len() < 2 {
+        if self.queued_directions.len() < INPUT_BUFFER_CAPACITY {
             self.queued_directions.push_back(direction);
         }
     }
@@ -60,20 +65,6 @@ impl InputBuffer {
     /// Clear all queued directions.
     pub fn clear(&mut self) {
         self.queued_directions.clear();
-    }
-}
-
-/// Resource to track time since last move for interpolation.
-#[derive(Resource)]
-pub struct MoveTimer {
-    pub elapsed: Duration,
-}
-
-impl Default for MoveTimer {
-    fn default() -> Self {
-        MoveTimer {
-            elapsed: Duration::ZERO,
-        }
     }
 }
 

@@ -7,7 +7,7 @@ use rand::prelude::*;
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, FOOD_COLOR, Food, FoodEatenEvent, FoodPulse, GamePhase,
     GameSet, GameState, GrowthEvent, Position, PreviousPosition, SCORE_AREA_COLS, SCORE_AREA_ROWS,
-    SnakeHead, SnakeSegment,
+    SnakeHead, SnakeSegment, Z_FOOD,
 };
 
 /// Plugin for food-related systems.
@@ -31,14 +31,14 @@ type SnakePartsQuery<'w, 's> =
 /// Spawns food at a random free cell that doesn't overlap the snake.
 ///
 /// Builds the complete set of occupied cells first, then picks uniformly from
-/// the complement. Returns without spawning when the arena is completely full
-/// (every cell is occupied by the snake).
-pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
+/// the complement. Returns `false` when the arena is completely full (no free
+/// cell exists), allowing the caller to transition to a win state. Returns
+/// `true` when a food entity was successfully spawned.
+pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) -> bool {
     let mut rng = rand::rng();
 
     // Build a hash-set of occupied cells for O(1) lookup.
-    let occupied: std::collections::HashSet<(i32, i32)> =
-        snake_positions.iter().map(|p| (p.x, p.y)).collect();
+    let occupied: std::collections::HashSet<Position> = snake_positions.iter().copied().collect();
 
     // Collect every cell in the arena that is free.
     // Exclude the top-left area where the score text is displayed (≈ 3 × 2 cells).
@@ -47,22 +47,30 @@ pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
         .filter(|p| {
             let is_score_area =
                 p.x < SCORE_AREA_COLS && p.y >= (ARENA_HEIGHT as i32 - SCORE_AREA_ROWS);
-            !occupied.contains(&(p.x, p.y)) && !is_score_area
+            !occupied.contains(p) && !is_score_area
         })
         .collect();
 
-    // If every cell is occupied there is nowhere to place food — skip spawning.
+    // If every cell is occupied there is nowhere to place food — caller decides
+    // what to do (e.g. transition to GamePhase::Won).
     if free.is_empty() {
-        return;
+        return false;
     }
     let position = free[rng.random_range(0..free.len())];
 
     let radius = CELL_SIZE / 2.0;
 
+    // Pre-compute world-space coordinates so the food spawns at its final
+    // z-layer immediately (avoids a one-frame z=0 flash before the renderer
+    // catches up next frame).
+    let world_x = (position.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE;
+    let world_y = (position.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE;
+
     commands.spawn((
         ShapeBundle::circle(
             &ShapeConfig {
                 color: FOOD_COLOR,
+                transform: Transform::from_xyz(world_x, world_y, Z_FOOD),
                 ..ShapeConfig::default_2d()
             },
             radius,
@@ -74,9 +82,13 @@ pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
             timer: Timer::from_seconds(0.8, TimerMode::Repeating),
         },
     ));
+    true
 }
 
-/// System to detect food collision and trigger growth.
+/// System to detect food collision, trigger growth, and respawn food.
+///
+/// If the arena is full after eating (no free cell to place new food), the
+/// game transitions to [`GamePhase::Won`].
 fn food_collision(
     mut commands: Commands,
     mut growth_writer: MessageWriter<GrowthEvent>,
@@ -90,19 +102,27 @@ fn food_collision(
         return;
     }
 
-    if let Some(head_pos) = head_positions.iter().next() {
-        for (food_entity, food_pos) in food_positions.iter() {
-            if head_pos == food_pos {
-                commands.entity(food_entity).despawn();
-                game_state.score += 1;
-                growth_writer.write(GrowthEvent);
-                food_eaten_writer.write(FoodEatenEvent {
-                    position: *food_pos,
-                });
+    let Ok(head_pos) = head_positions.single() else {
+        return;
+    };
 
-                // Collect all snake positions to avoid spawning food on the snake
-                let snake_positions: Vec<Position> = all_snake_positions.iter().copied().collect();
-                spawn_food(&mut commands, &snake_positions);
+    for (food_entity, food_pos) in food_positions.iter() {
+        if head_pos == food_pos {
+            // Capture the food position before despawning the entity.
+            let eaten_at = *food_pos;
+
+            // Update game state and emit messages first, then despawn the entity.
+            game_state.score += 1;
+            growth_writer.write(GrowthEvent);
+            food_eaten_writer.write(FoodEatenEvent { position: eaten_at });
+            commands.entity(food_entity).despawn();
+
+            // Collect all snake positions to avoid spawning food on the snake.
+            let snake_positions: Vec<Position> = all_snake_positions.iter().copied().collect();
+            if !spawn_food(&mut commands, &snake_positions) {
+                // No free cell remained — the snake fills the arena. Win!
+                game_state.phase = GamePhase::Won;
+                info!("You Win! Final score: {}", game_state.score);
             }
         }
     }

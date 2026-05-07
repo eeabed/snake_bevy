@@ -3,11 +3,15 @@
 use bevy::prelude::*;
 
 /// Grid position component for entities on the arena.
-#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct Position {
     pub x: i32,
     pub y: i32,
 }
+
+/// Initial spawn cell for the snake's head. Lives next to `Position` so the
+/// constants module doesn't need to import a component type.
+pub const INITIAL_SNAKE_POSITION: Position = Position { x: 3, y: 3 };
 
 /// Component to track previous position for smooth interpolation.
 #[derive(Component, Clone, Copy, Debug)]
@@ -16,7 +20,7 @@ pub struct PreviousPosition {
 }
 
 /// Direction enum for snake movement.
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub enum Direction {
     Left,
     Right,
@@ -81,6 +85,10 @@ pub struct ScoreText;
 /// Component to mark the game over overlay UI.
 #[derive(Component)]
 pub struct GameOverUI;
+
+/// Component to mark the win-screen overlay UI.
+#[derive(Component)]
+pub struct WinUI;
 
 /// Component to mark the start menu UI.
 #[derive(Component)]

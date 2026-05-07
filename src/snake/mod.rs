@@ -5,9 +5,9 @@ use bevy_vector_shapes::prelude::*;
 
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CORNER_RADIUS, Direction, GamePhase, GameSet, GameState,
-    GrowingSegment, GrowthEvent, INITIAL_SNAKE_POSITION, InputBuffer, MOVE_INTERVAL, MoveTimer,
-    Position, PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_HEAD_GLOW_COLOR, SNAKE_SEGMENT_COLOR,
-    SnakeEye, SnakeHead, SnakeSegment, Z_SNAKE_HEAD,
+    GrowingSegment, GrowthEvent, INITIAL_SNAKE_POSITION, InputBuffer, MOVE_INTERVAL, Position,
+    PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_HEAD_GLOW_COLOR, SNAKE_SEGMENT_COLOR, SnakeEye,
+    SnakeHead, SnakeSegment, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
 };
 
 /// Plugin for snake-related systems.
@@ -15,7 +15,9 @@ pub struct SnakePlugin;
 
 impl Plugin for SnakePlugin {
     fn build(&self, app: &mut App) {
-        // Input + movement run first (GameSet::Movement).
+        // Movement set: read input, then advance the snake on each move-tick.
+        // The renderer's interpolation accumulator lives inside
+        // `position_translation` itself (no shared resource needed).
         app.add_systems(
             Update,
             (snake_movement_input, snake_movement.run_if(on_timer(MOVE_INTERVAL)))
@@ -123,12 +125,19 @@ pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entit
     // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
     let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
 
+    // Compute world-space spawn coordinates so the segment renders at the right
+    // z-layer immediately. `position_translation` will overwrite x/y next frame
+    // but preserve z.
+    let world_x = (position.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE;
+    let world_y = (position.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE;
+
     commands
         .spawn((
             ShapeBundle::rect(
                 &ShapeConfig {
                     color: SNAKE_SEGMENT_COLOR,
                     corner_radii: Vec4::splat(corner_radius_normalized),
+                    transform: Transform::from_xyz(world_x, world_y, Z_SNAKE_SEGMENT),
                     ..ShapeConfig::default_2d()
                 },
                 Vec2::splat(size),
@@ -171,17 +180,17 @@ fn snake_movement_input(
         return;
     }
 
-    if let Some(head) = heads.iter().next() {
-        // Get the last direction in buffer or current head direction
-        let last_direction = input_buffer.last_direction().unwrap_or(head.direction);
+    let Ok(head) = heads.single() else { return };
 
-        // Get new direction from input
-        let new_direction = direction_from_input(&keyboard_input, last_direction);
+    // Get the last direction in buffer or current head direction
+    let last_direction = input_buffer.last_direction().unwrap_or(head.direction);
 
-        // If direction changed and it's not opposite to the last direction, queue it
-        if new_direction != last_direction && new_direction != last_direction.opposite() {
-            input_buffer.queue_direction(new_direction);
-        }
+    // Get new direction from input
+    let new_direction = direction_from_input(&keyboard_input, last_direction);
+
+    // If direction changed and it's not opposite to the last direction, queue it
+    if new_direction != last_direction && new_direction != last_direction.opposite() {
+        input_buffer.queue_direction(new_direction);
     }
 }
 
@@ -189,28 +198,23 @@ fn snake_movement_input(
 fn snake_movement(
     game_state: Res<GameState>,
     mut input_buffer: ResMut<InputBuffer>,
-    mut move_timer: ResMut<MoveTimer>,
     mut query_set: ParamSet<(SnakeHeadQuery, PositionQuery)>,
 ) {
     if game_state.phase != GamePhase::Playing {
         return;
     }
 
-    // Reset the move timer
-    move_timer.elapsed = std::time::Duration::ZERO;
-
-    // Step 1: Get the head entity and its current direction and position
+    // Step 1: Get the head entity and its current direction and position.
     let (head_entity, head_direction, head_position) = {
         let mut heads_query = query_set.p0();
-        if let Some((entity, mut head, position, _)) = heads_query.iter_mut().next() {
-            // Try to consume buffered direction
-            if let Some(buffered_direction) = input_buffer.pop_direction() {
-                head.direction = buffered_direction;
-            }
-            (entity, head.direction, *position)
-        } else {
+        let Ok((entity, mut head, position, _)) = heads_query.single_mut() else {
             return;
+        };
+        // Try to consume buffered direction
+        if let Some(buffered_direction) = input_buffer.pop_direction() {
+            head.direction = buffered_direction;
         }
+        (entity, head.direction, *position)
     };
 
     // Step 2: Record the current position of each segment before any movement
@@ -231,22 +235,23 @@ fn snake_movement(
     // Step 3: Move the head in the current direction
     {
         let mut heads_query = query_set.p0();
-        if let Some((_, _, mut head_pos, mut prev_pos)) = heads_query.iter_mut().next() {
-            // Save current position as previous position for interpolation
-            prev_pos.pos = *head_pos;
+        let Ok((_, _, mut head_pos, mut prev_pos)) = heads_query.single_mut() else {
+            return;
+        };
+        // Save current position as previous position for interpolation
+        prev_pos.pos = *head_pos;
 
-            // Move the head one cell in the current direction
-            match head_direction {
-                Direction::Left => head_pos.x -= 1,
-                Direction::Right => head_pos.x += 1,
-                Direction::Up => head_pos.y += 1,
-                Direction::Down => head_pos.y -= 1,
-            }
-
-            // Wrap around if the snake goes off the edge (creates a toroidal arena)
-            head_pos.x = (head_pos.x + ARENA_WIDTH as i32) % ARENA_WIDTH as i32;
-            head_pos.y = (head_pos.y + ARENA_HEIGHT as i32) % ARENA_HEIGHT as i32;
+        // Move the head one cell in the current direction
+        match head_direction {
+            Direction::Left => head_pos.x -= 1,
+            Direction::Right => head_pos.x += 1,
+            Direction::Up => head_pos.y += 1,
+            Direction::Down => head_pos.y -= 1,
         }
+
+        // Wrap around if the snake goes off the edge (creates a toroidal arena)
+        head_pos.x = (head_pos.x + ARENA_WIDTH as i32) % ARENA_WIDTH as i32;
+        head_pos.y = (head_pos.y + ARENA_HEIGHT as i32) % ARENA_HEIGHT as i32;
     }
 
     // Step 4: Move each body segment to the position of the segment in front of it
@@ -261,18 +266,29 @@ fn snake_movement(
     }
 }
 
-/// System to handle snake growth when GrowthEvent is received.
+/// Handles every [`GrowthEvent`] in the queue this frame by appending a new
+/// segment for each one.
+///
+/// The new segment is spawned at the **previous** position of the current tail
+/// — i.e. the cell the tail just vacated this tick. This avoids the head/segment
+/// overlap that would otherwise occur on the length-1 → length-2 transition,
+/// which is why no special-case "skip segment[1]" logic is needed in
+/// [`game_over_check`] anymore.
 fn snake_growth(
     mut commands: Commands,
     mut game_state: ResMut<GameState>,
     mut growth_reader: MessageReader<GrowthEvent>,
-    positions: Query<&Position>,
+    prev_positions: Query<&PreviousPosition>,
 ) {
-    if growth_reader.read().next().is_some()
-        && let Some(&last_segment_entity) = game_state.snake_segments.last()
-        && let Ok(last_pos) = positions.get(last_segment_entity)
-    {
-        let new_segment = spawn_snake_segment(&mut commands, *last_pos);
+    for _ in growth_reader.read() {
+        let Some(&last_segment_entity) = game_state.snake_segments.last() else {
+            return;
+        };
+        let Ok(last_prev) = prev_positions.get(last_segment_entity) else {
+            return;
+        };
+
+        let new_segment = spawn_snake_segment(&mut commands, last_prev.pos);
 
         // Add growing animation component
         commands.entity(new_segment).insert(GrowingSegment {
@@ -287,21 +303,24 @@ fn snake_growth(
 fn game_over_check(
     mut game_state: ResMut<GameState>,
     head_positions: Query<&Position, With<SnakeHead>>,
-    segment_positions: Query<(&Position, Entity), With<SnakeSegment>>,
+    segment_positions: Query<&Position, With<SnakeSegment>>,
 ) {
     if game_state.phase != GamePhase::Playing {
         return;
     }
 
-    if let Some(head_pos) = head_positions.iter().next() {
-        for (segment_pos, segment_entity) in segment_positions.iter() {
-            if head_pos == segment_pos
-                && game_state.snake_segments.len() > 1
-                && game_state.snake_segments[1] != segment_entity
-            {
-                game_state.phase = GamePhase::GameOver;
-                info!("Game Over! Final score: {}", game_state.score);
-            }
+    let Ok(head_pos) = head_positions.single() else {
+        return;
+    };
+
+    // Because new segments now spawn at the tail's previous position
+    // (see `snake_growth`), no body segment can ever share the head's cell
+    // immediately after a growth — so a plain equality check is sufficient.
+    for segment_pos in segment_positions.iter() {
+        if head_pos == segment_pos {
+            game_state.phase = GamePhase::GameOver;
+            info!("Game Over! Final score: {}", game_state.score);
+            break;
         }
     }
 }

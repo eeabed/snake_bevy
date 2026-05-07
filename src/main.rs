@@ -12,7 +12,7 @@ mod ui;
 use food::FoodPlugin;
 use game::{
     ARENA_HEIGHT, ARENA_WIDTH, BACKGROUND_COLOR, CELL_SIZE, CameraShake, FoodEatenEvent, GameSet,
-    GameState, GrowthEvent, InputBuffer, MoveTimer,
+    GameState, GrowthEvent, InputBuffer, WINDOW_PADDING,
 };
 use rendering::RenderingPlugin;
 use snake::SnakePlugin;
@@ -21,7 +21,7 @@ use ui::UiPlugin;
 fn main() {
     App::new()
         // Enforce deterministic cross-plugin execution order every frame:
-        //   Movement → Collision → Effects → Rendering
+        //   Movement → Collision → Effects → Rendering → Ui
         .configure_sets(
             Update,
             (
@@ -29,6 +29,7 @@ fn main() {
                 GameSet::Collision,
                 GameSet::Effects,
                 GameSet::Rendering,
+                GameSet::Ui,
             )
                 .chain(),
         )
@@ -36,8 +37,8 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     resolution: WindowResolution::new(
-                        (ARENA_WIDTH as f32 * CELL_SIZE + 20.0) as u32,
-                        (ARENA_HEIGHT as f32 * CELL_SIZE + 20.0) as u32,
+                        (ARENA_WIDTH as f32 * CELL_SIZE + WINDOW_PADDING) as u32,
+                        (ARENA_HEIGHT as f32 * CELL_SIZE + WINDOW_PADDING) as u32,
                     ),
                     title: "Snake Game".to_string(),
                     ..Default::default()
@@ -52,7 +53,6 @@ fn main() {
         .insert_resource(ClearColor(BACKGROUND_COLOR))
         .init_resource::<GameState>()
         .init_resource::<InputBuffer>()
-        .init_resource::<MoveTimer>()
         .init_resource::<CameraShake>()
         // Events
         .add_message::<GrowthEvent>()

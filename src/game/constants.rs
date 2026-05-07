@@ -3,8 +3,6 @@
 use bevy::prelude::*;
 use std::time::Duration;
 
-use super::Position;
-
 // Arena dimensions
 pub const ARENA_WIDTH: u32 = 20;
 pub const ARENA_HEIGHT: u32 = 20;
@@ -13,11 +11,11 @@ pub const ARENA_HEIGHT: u32 = 20;
 pub const CELL_SIZE: f32 = 25.0;
 pub const CORNER_RADIUS: f32 = 4.0;
 
+/// Pixels of padding added on each side of the arena when sizing the OS window.
+pub const WINDOW_PADDING: f32 = 20.0;
+
 // Timing
 pub const MOVE_INTERVAL: Duration = Duration::from_millis(150);
-
-// Initial positions
-pub const INITIAL_SNAKE_POSITION: Position = Position { x: 3, y: 3 };
 
 // Colors - using HDR values (> 1.0) for bloom glow effects
 pub const SNAKE_HEAD_COLOR: Color = Color::srgba(1.2, 1.2, 1.2, 1.0);

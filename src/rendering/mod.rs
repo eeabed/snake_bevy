@@ -4,10 +4,12 @@ use bevy::prelude::*;
 use bevy_vector_shapes::prelude::*;
 use rand::prelude::*;
 
+use std::time::Duration;
+
 use crate::game::{
-    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, FOOD_EATEN_COLOR, FoodEatenEvent, GamePhase,
-    GameSet, GameState, GrowingSegment, MOVE_INTERVAL, MoveTimer, Position, PreviousPosition,
-    PulseEffect, SnakeHead, SnakeSegment, Z_FOOD, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
+    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, Direction, FOOD_EATEN_COLOR, FoodEatenEvent,
+    GamePhase, GameSet, GameState, GrowingSegment, MOVE_INTERVAL, Position, PreviousPosition,
+    PulseEffect, SnakeHead, Z_FOOD,
 };
 
 /// Plugin for rendering and visual effects.
@@ -18,7 +20,6 @@ impl Plugin for RenderingPlugin {
         app.add_systems(
             Update,
             (
-                update_move_timer,
                 position_translation,
                 update_head_rotation,
                 pulse_effect_system,
@@ -34,44 +35,46 @@ impl Plugin for RenderingPlugin {
 }
 
 // Type alias for transform interpolation query.
-// Every entity matched here carries Position + PreviousPosition, which only
-// SnakeHead, SnakeSegment, and Food entities have. The z-layer is determined
-// by whichever marker component is present; Food is the implicit final case.
-type TransformInterpolationQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static Position,
-        &'static PreviousPosition,
-        &'static mut Transform,
-        Option<&'static SnakeHead>,
-        Option<&'static SnakeSegment>,
-    ),
->;
-
-/// System to track elapsed time for interpolation.
-fn update_move_timer(mut move_timer: ResMut<MoveTimer>, time: Res<Time>) {
-    move_timer.elapsed += time.delta();
-}
+// Every entity matched here carries Position + PreviousPosition (snake parts
+// and food). The z-layer was set at spawn time and is preserved by the
+// translation system below.
+type TransformInterpolationQuery<'w, 's> =
+    Query<'w, 's, (&'static Position, &'static PreviousPosition, &'static mut Transform)>;
 
 /// System to interpolate entity positions for smooth movement.
-fn position_translation(mut transforms: TransformInterpolationQuery, move_timer: Res<MoveTimer>) {
+///
+/// Owns its own interpolation accumulator (`Local<Duration>`). Each frame:
+///   - if any snake-head's `Position` was mutated this frame (by the move-tick
+///     in `snake_movement`), the accumulator is reset to zero — meaning we
+///     start the new tick at progress = 0.0 with no visual snap;
+///   - otherwise the accumulator advances by `time.delta()`.
+///
+/// This eliminates the need for a shared `MoveTimer` resource and the inter-
+/// system coordination that came with it.
+fn position_translation(
+    mut transforms: TransformInterpolationQuery,
+    head_changed: Query<(), (With<SnakeHead>, Changed<Position>)>,
+    mut accum: Local<Duration>,
+    time: Res<Time>,
+    game_state: Res<GameState>,
+) {
+    // Outside of `Playing`, snap the accumulator back to zero so the next play
+    // session starts cleanly, and skip the interpolation work entirely.
+    if game_state.phase != GamePhase::Playing {
+        *accum = Duration::ZERO;
+        return;
+    }
+
+    if head_changed.is_empty() {
+        *accum += time.delta();
+    } else {
+        *accum = Duration::ZERO;
+    }
+
     // Calculate interpolation progress (0.0 to 1.0)
-    let progress = (move_timer.elapsed.as_secs_f32() / MOVE_INTERVAL.as_secs_f32()).min(1.0);
+    let progress = (accum.as_secs_f32() / MOVE_INTERVAL.as_secs_f32()).min(1.0);
 
-    for (pos, prev_pos, mut transform, head, segment) in transforms.iter_mut() {
-        // Set z-index based on entity type to ensure proper layering.
-        // The query only matches entities with Position + PreviousPosition, which
-        // are exclusively SnakeHead, SnakeSegment, and Food — so the else branch
-        // is the Food case (no dedicated marker component needed in the query).
-        let z = if head.is_some() {
-            Z_SNAKE_HEAD
-        } else if segment.is_some() {
-            Z_SNAKE_SEGMENT
-        } else {
-            Z_FOOD
-        };
-
+    for (pos, prev_pos, mut transform) in &mut transforms {
         // Interpolate between previous and current position
         let curr_x = (pos.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE;
         let curr_y = (pos.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE;
@@ -100,21 +103,25 @@ fn position_translation(mut transforms: TransformInterpolationQuery, move_timer:
             curr_y - prev_y
         };
 
-        let interpolated_x = prev_x + dx * progress;
-        let interpolated_y = prev_y + dy * progress;
-
-        transform.translation = Vec3::new(interpolated_x, interpolated_y, z);
+        // Preserve z (set once at spawn) — only update x/y.
+        transform.translation.x = prev_x + dx * progress;
+        transform.translation.y = prev_y + dy * progress;
     }
 }
 
 /// System to update snake head rotation based on direction.
-fn update_head_rotation(mut heads: Query<(&SnakeHead, &mut Transform)>) {
-    for (head, mut transform) in heads.iter_mut() {
+///
+/// Only runs while playing — after death the head's direction is fixed and
+/// rewriting the same Quat every frame would be busywork.
+fn update_head_rotation(
+    mut heads: Query<(&SnakeHead, &mut Transform), Changed<SnakeHead>>,
+) {
+    for (head, mut transform) in &mut heads {
         let rotation = match head.direction {
-            crate::game::Direction::Right => 0.0,
-            crate::game::Direction::Up => std::f32::consts::FRAC_PI_2,
-            crate::game::Direction::Left => std::f32::consts::PI,
-            crate::game::Direction::Down => -std::f32::consts::FRAC_PI_2,
+            Direction::Right => 0.0,
+            Direction::Up => std::f32::consts::FRAC_PI_2,
+            Direction::Left => std::f32::consts::PI,
+            Direction::Down => -std::f32::consts::FRAC_PI_2,
         };
 
         transform.rotation = Quat::from_rotation_z(rotation);
