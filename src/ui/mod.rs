@@ -353,7 +353,13 @@ fn restart_game(
 }
 
 /// System to update the score display.
+///
+/// Guarded by `is_changed()` so the string is only allocated and the Text
+/// component only mutated when the score actually changes.
 fn update_score_text(game_state: Res<GameState>, mut query: Query<&mut Text, With<ScoreText>>) {
+    if !game_state.is_changed() {
+        return;
+    }
     if let Ok(mut text) = query.single_mut() {
         *text = Text::from(format!("Score: {}", game_state.score));
     }

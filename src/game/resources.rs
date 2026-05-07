@@ -1,6 +1,7 @@
 //! Game resources (singleton state).
 
 use bevy::prelude::*;
+use std::collections::VecDeque;
 use std::time::Duration;
 
 use super::Direction;
@@ -35,29 +36,25 @@ impl Default for GameState {
 /// Input buffer to queue direction changes.
 #[derive(Resource, Default)]
 pub struct InputBuffer {
-    queued_directions: Vec<Direction>,
+    queued_directions: VecDeque<Direction>,
 }
 
 impl InputBuffer {
     /// Queue a direction change (max 2 buffered inputs).
     pub fn queue_direction(&mut self, direction: Direction) {
         if self.queued_directions.len() < 2 {
-            self.queued_directions.push(direction);
+            self.queued_directions.push_back(direction);
         }
     }
 
     /// Pop the next queued direction.
     pub fn pop_direction(&mut self) -> Option<Direction> {
-        if !self.queued_directions.is_empty() {
-            Some(self.queued_directions.remove(0))
-        } else {
-            None
-        }
+        self.queued_directions.pop_front()
     }
 
     /// Get the last queued direction without removing it.
     pub fn last_direction(&self) -> Option<Direction> {
-        self.queued_directions.last().copied()
+        self.queued_directions.back().copied()
     }
 
     /// Clear all queued directions.
