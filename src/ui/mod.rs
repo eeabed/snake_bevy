@@ -78,7 +78,7 @@ fn setup_system(mut commands: Commands) {
             color: ARENA_BORDER_COLOR,
             alpha_mode: ShapeAlphaMode::Add,
             hollow: true,
-            thickness: 4.0,
+            thickness: 2.0,
             corner_radii: Vec4::splat(0.02),
             transform: Transform::from_xyz(0.0, 0.0, 0.1),
             ..ShapeConfig::default_2d()
@@ -199,7 +199,8 @@ fn spawn_start_menu(commands: &mut Commands) {
                 },
             ));
 
-            // Start instructions
+            // Start instructions — same hue as the title, slightly dimmer so
+            // the title stays the dominant element on the menu.
             parent.spawn((
                 Text::from("Press SPACE to start"),
                 TextFont {
@@ -207,7 +208,7 @@ fn spawn_start_menu(commands: &mut Commands) {
                     weight: FontWeight::BOLD,
                     ..default()
                 },
-                TextColor(Color::srgba(1.0, 1.0, 0.3, 1.0)),
+                TextColor(Color::srgba(0.4, 0.85, 0.4, 1.0)),
             ));
         });
 }
@@ -225,7 +226,9 @@ fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            // Dim scrim — high enough alpha to make the overlay text dominant,
+            // but still translucent so the player can see where they died.
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
             GameOverUI,
         ))
         .with_children(|parent| {
@@ -298,7 +301,7 @@ fn spawn_win_screen(commands: &mut Commands, score: usize) {
                 flex_direction: FlexDirection::Column,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
             WinUI,
         ))
         .with_children(|parent| {

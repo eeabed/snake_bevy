@@ -29,7 +29,7 @@ pub const BACKGROUND_COLOR: Color = Color::srgba(0.02, 0.02, 0.03, 1.0);
 
 // Effect colors - HDR for bloom
 pub const FOOD_EATEN_COLOR: Color = Color::srgba(3.0, 3.0, 1.0, 0.8); // Bright yellow flash
-pub const ARENA_BORDER_COLOR: Color = Color::srgba(0.3, 0.5, 0.8, 0.6); // Blue border glow
+pub const ARENA_BORDER_COLOR: Color = Color::srgba(0.3, 0.5, 0.8, 0.25); // Subtle blue border
 
 // Score-text exclusion zone: cells near the top-left corner that the UI overlaps.
 // Food will not be spawned in the rectangle x ∈ [0, SCORE_AREA_COLS) × y ∈ (ARENA_HEIGHT - SCORE_AREA_ROWS, ARENA_HEIGHT].

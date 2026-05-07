@@ -20,6 +20,14 @@ const SEGMENT_SIZE_FACTOR: f32 = 0.86;
 // snake doesn't end abruptly. Index 0 is the tail itself.
 const TAIL_TAPER: [f32; 3] = [0.65, 0.78, 0.90];
 
+// Body color gradient. Each body segment's color is interpolated between
+// `BODY_COLOR_NEAR_HEAD` (segment closest to the head) and
+// `BODY_COLOR_NEAR_TAIL` (the tail) based on its position in the snake.
+// Same hue as `SNAKE_SEGMENT_COLOR`, just brighter near the head and dimmer
+// at the tail to give the snake a sense of direction.
+const BODY_COLOR_NEAR_HEAD: Color = Color::srgba(0.40, 0.95, 0.40, 1.0);
+const BODY_COLOR_NEAR_TAIL: Color = Color::srgba(0.18, 0.55, 0.18, 1.0);
+
 /// Plugin for snake-related systems.
 pub struct SnakePlugin;
 
@@ -39,10 +47,11 @@ impl Plugin for SnakePlugin {
             Update,
             (snake_growth, game_over_check).chain().in_set(GameSet::Effects),
         );
-        // Visual tail tapering belongs in the Rendering set so it runs after
-        // `growing_segment_animation` (whose final-frame `scale = 1.0` write
-        // we want to overwrite for tail segments).
-        app.add_systems(Update, taper_tail.in_set(GameSet::Rendering));
+        // Visual body styling (tail taper + head→tail color gradient) belongs
+        // in the Rendering set so it runs after `growing_segment_animation`
+        // (whose final-frame `scale = 1.0` write we want to overwrite for
+        // tail segments).
+        app.add_systems(Update, style_snake_body.in_set(GameSet::Rendering));
     }
 }
 
@@ -58,6 +67,12 @@ type SnakeHeadQuery<'w, 's> = Query<
     ),
 >;
 type PositionQuery<'w, 's> = Query<'w, 's, (&'static mut Position, &'static mut PreviousPosition)>;
+type BodyStyleQuery<'w, 's> = Query<
+    'w,
+    's,
+    (&'static mut Transform, &'static mut ShapeFill),
+    (With<SnakeSegment>, Without<GrowingSegment>),
+>;
 
 /// Spawns the snake head entity with eyes.
 ///
@@ -76,7 +91,7 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
     //   radius:  large enough to be visibly two distinct dots at ~25 px cells
     let eye_forward = CELL_SIZE * 0.18;
     let eye_lateral = CELL_SIZE * 0.22;
-    let eye_radius = CELL_SIZE * 0.11;
+    let eye_radius = CELL_SIZE * 0.13;
 
     commands
         .spawn((
@@ -342,33 +357,64 @@ fn game_over_check(
     }
 }
 
-/// Applies a progressive scale-down to the last few snake segments so the
-/// snake tapers to a tail rather than ending in a square stub.
+/// Linearly interpolate between two `srgba` colors. Used for the body's
+/// head→tail brightness gradient.
+fn lerp_color(a: Color, b: Color, t: f32) -> Color {
+    let a = a.to_srgba();
+    let b = b.to_srgba();
+    Color::srgba(
+        a.red + (b.red - a.red) * t,
+        a.green + (b.green - a.green) * t,
+        a.blue + (b.blue - a.blue) * t,
+        a.alpha + (b.alpha - a.alpha) * t,
+    )
+}
+
+/// Per-frame visual styling for snake body segments: applies the tail
+/// scale-taper and the head→tail color gradient.
 ///
-/// Per-frame cost is one transform write per segment. Segments still in the
-/// grow-in animation (`GrowingSegment`) are skipped so the two scale writers
-/// don't fight; once the grow-animation removes its component, this system
-/// takes over and applies the tapered scale on the next frame.
-fn taper_tail(
-    game_state: Res<GameState>,
-    mut segments: Query<&mut Transform, (With<SnakeSegment>, Without<GrowingSegment>)>,
-) {
+/// Segments still in the grow-in animation (`GrowingSegment`) are skipped so
+/// the two scale writers don't fight; once that animation removes its
+/// component, this system takes over on the next frame.
+///
+/// Both scale and color writes are guarded so they only fire when the value
+/// actually changes — avoids spurious change-detection ticks for segments
+/// in the steady-state middle of the body.
+fn style_snake_body(game_state: Res<GameState>, mut segments: BodyStyleQuery) {
     let total = game_state.snake_segments.len();
     if total < 2 {
-        return; // only the head — nothing to taper.
+        return; // only the head — no body to style.
     }
+    let body_count = total - 1; // segments excluding the head.
 
     // game_state.snake_segments[0] is the head; body segments are at 1..total.
     for (i, &entity) in game_state.snake_segments.iter().enumerate().skip(1) {
-        let from_tail = total - 1 - i;
+        // Position in body, 0 = closest to head, body_count - 1 = tail.
+        let body_index = i - 1;
+        let from_tail = body_count - 1 - body_index;
+
+        // Scale taper for the last few segments; full scale otherwise.
         let scale_factor = TAIL_TAPER.get(from_tail).copied().unwrap_or(1.0);
 
-        let Ok(mut transform) = segments.get_mut(entity) else {
+        // Color gradient: t = 0.0 at the segment closest to the head,
+        // t = 1.0 at the tail. Single-segment body collapses to t = 0.0.
+        let t = if body_count <= 1 {
+            0.0
+        } else {
+            body_index as f32 / (body_count - 1) as f32
+        };
+        let color = lerp_color(BODY_COLOR_NEAR_HEAD, BODY_COLOR_NEAR_TAIL, t);
+
+        let Ok((mut transform, mut fill)) = segments.get_mut(entity) else {
             continue;
         };
-        let target = Vec3::splat(scale_factor);
-        if transform.scale != target {
-            transform.scale = target;
+
+        let target_scale = Vec3::splat(scale_factor);
+        if transform.scale != target_scale {
+            transform.scale = target_scale;
+        }
+        if fill.color != color {
+            fill.color = color;
         }
     }
 }
