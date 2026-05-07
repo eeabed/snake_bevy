@@ -297,7 +297,6 @@ fn start_game_from_menu(
         // Initialize game state
         game_state.snake_segments.clear();
         game_state.score = 0;
-        game_state.game_over = false;
         game_state.phase = GamePhase::Playing;
 
         // Reset move timer
@@ -338,7 +337,6 @@ fn restart_game(
         // Reset game state
         game_state.snake_segments.clear();
         game_state.score = 0;
-        game_state.game_over = false;
         game_state.phase = GamePhase::Playing;
 
         // Clear input buffer and reset move timer

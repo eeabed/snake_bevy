@@ -6,7 +6,7 @@ use rand::prelude::*;
 
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, FOOD_COLOR, Food, FoodEatenEvent, FoodPulse, GamePhase,
-    GameState, GrowthEvent, Position, PreviousPosition, SnakeHead, SnakeSegment,
+    GameSet, GameState, GrowthEvent, Position, PreviousPosition, SnakeHead, SnakeSegment,
 };
 
 /// Plugin for food-related systems.
@@ -14,7 +14,12 @@ pub struct FoodPlugin;
 
 impl Plugin for FoodPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (food_collision, food_pulse_animation).chain());
+        app.add_systems(
+            Update,
+            (food_collision, food_pulse_animation)
+                .chain()
+                .in_set(GameSet::Collision),
+        );
     }
 }
 
@@ -22,26 +27,33 @@ impl Plugin for FoodPlugin {
 type SnakePartsQuery<'w, 's> =
     Query<'w, 's, &'static Position, Or<(With<SnakeHead>, With<SnakeSegment>)>>;
 
-/// Spawns food at a random position that doesn't overlap with the snake.
+/// Spawns food at a random free cell that doesn't overlap the snake.
+///
+/// Builds the complete set of occupied cells first, then picks uniformly from
+/// the complement. Returns without spawning when the arena is completely full
+/// (every cell is occupied by the snake).
 pub fn spawn_food(commands: &mut Commands, snake_positions: &[Position]) {
     let mut rng = rand::rng();
-    let mut position;
 
-    // Keep generating positions until we find one that doesn't overlap with the snake or score display
-    loop {
-        position = Position {
-            x: rng.random_range(0..ARENA_WIDTH as i32),
-            y: rng.random_range(0..ARENA_HEIGHT as i32),
-        };
+    // Build a hash-set of occupied cells for O(1) lookup.
+    let occupied: std::collections::HashSet<(i32, i32)> =
+        snake_positions.iter().map(|p| (p.x, p.y)).collect();
 
-        // Exclude top-left area where score is displayed (roughly 3x2 cells)
-        let is_score_area = position.x <= 2 && position.y >= (ARENA_HEIGHT as i32 - 2);
+    // Collect every cell in the arena that is free.
+    // Exclude the top-left area where the score text is displayed (≈ 3 × 2 cells).
+    let free: Vec<Position> = (0..ARENA_WIDTH as i32)
+        .flat_map(|x| (0..ARENA_HEIGHT as i32).map(move |y| Position { x, y }))
+        .filter(|p| {
+            let is_score_area = p.x <= 2 && p.y >= (ARENA_HEIGHT as i32 - 2);
+            !occupied.contains(&(p.x, p.y)) && !is_score_area
+        })
+        .collect();
 
-        // Check if this position overlaps with any snake segment or the score area
-        if !snake_positions.contains(&position) && !is_score_area {
-            break;
-        }
+    // If every cell is occupied there is nowhere to place food — skip spawning.
+    if free.is_empty() {
+        return;
     }
+    let position = free[rng.random_range(0..free.len())];
 
     let radius = CELL_SIZE / 2.0;
 

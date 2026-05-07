@@ -19,7 +19,6 @@ pub enum GamePhase {
 pub struct GameState {
     pub snake_segments: Vec<Entity>,
     pub score: usize,
-    pub game_over: bool,
     pub phase: GamePhase,
 }
 
@@ -28,7 +27,6 @@ impl Default for GameState {
         GameState {
             snake_segments: Vec::new(),
             score: 0,
-            game_over: false,
             phase: GamePhase::Menu,
         }
     }

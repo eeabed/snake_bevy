@@ -4,7 +4,7 @@ use bevy::{ecs::system::ParamSet, prelude::*, time::common_conditions::on_timer}
 use bevy_vector_shapes::prelude::*;
 
 use crate::game::{
-    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CORNER_RADIUS, Direction, GamePhase, GameState,
+    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CORNER_RADIUS, Direction, GamePhase, GameSet, GameState,
     GrowingSegment, GrowthEvent, INITIAL_SNAKE_POSITION, InputBuffer, MOVE_INTERVAL, MoveTimer,
     Position, PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_HEAD_GLOW_COLOR, SNAKE_SEGMENT_COLOR,
     SnakeEye, SnakeHead, SnakeSegment, Z_SNAKE_HEAD,
@@ -15,15 +15,17 @@ pub struct SnakePlugin;
 
 impl Plugin for SnakePlugin {
     fn build(&self, app: &mut App) {
+        // Input + movement run first (GameSet::Movement).
         app.add_systems(
             Update,
-            (
-                snake_movement_input,
-                snake_movement.run_if(on_timer(MOVE_INTERVAL)),
-                snake_growth,
-                game_over_check,
-            )
-                .chain(),
+            (snake_movement_input, snake_movement.run_if(on_timer(MOVE_INTERVAL)))
+                .chain()
+                .in_set(GameSet::Movement),
+        );
+        // Growth and game-over run after food collision (GameSet::Effects).
+        app.add_systems(
+            Update,
+            (snake_growth, game_over_check).chain().in_set(GameSet::Effects),
         );
     }
 }
@@ -54,8 +56,10 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
                     color: SNAKE_HEAD_COLOR,
                     corner_radii: Vec4::splat(corner_radius_normalized),
                     transform: Transform::from_xyz(
-                        (3.0 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
-                        (3.0 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
+                        (INITIAL_SNAKE_POSITION.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5)
+                            * CELL_SIZE,
+                        (INITIAL_SNAKE_POSITION.y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5)
+                            * CELL_SIZE,
                         Z_SNAKE_HEAD,
                     ),
                     ..ShapeConfig::default_2d()
@@ -276,7 +280,6 @@ fn game_over_check(
                 && game_state.snake_segments.len() > 1
                 && game_state.snake_segments[1] != segment_entity
             {
-                game_state.game_over = true;
                 game_state.phase = GamePhase::GameOver;
                 println!("Game Over! Final score: {}", game_state.score);
             }

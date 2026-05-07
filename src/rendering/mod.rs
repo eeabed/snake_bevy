@@ -6,8 +6,9 @@ use rand::prelude::*;
 
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, FOOD_EATEN_COLOR, Food, FoodEatenEvent,
-    GamePhase, GameState, GrowingSegment, MOVE_INTERVAL, MoveTimer, Position, PreviousPosition,
-    PulseEffect, SnakeHead, SnakeSegment, Z_BACKGROUND, Z_FOOD, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
+    GamePhase, GameSet, GameState, GrowingSegment, MOVE_INTERVAL, MoveTimer, Position,
+    PreviousPosition, PulseEffect, SnakeHead, SnakeSegment, Z_BACKGROUND, Z_FOOD, Z_SNAKE_HEAD,
+    Z_SNAKE_SEGMENT,
 };
 
 /// Plugin for rendering and visual effects.
@@ -27,7 +28,8 @@ impl Plugin for RenderingPlugin {
                 growing_segment_animation,
                 trigger_camera_shake_on_game_over,
             )
-                .chain(),
+                .chain()
+                .in_set(GameSet::Rendering),
         );
     }
 }

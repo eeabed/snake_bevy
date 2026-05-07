@@ -11,8 +11,8 @@ mod ui;
 
 use food::FoodPlugin;
 use game::{
-    ARENA_HEIGHT, ARENA_WIDTH, BACKGROUND_COLOR, CELL_SIZE, CameraShake, FoodEatenEvent, GameState,
-    GrowthEvent, InputBuffer, MoveTimer,
+    ARENA_HEIGHT, ARENA_WIDTH, BACKGROUND_COLOR, CELL_SIZE, CameraShake, FoodEatenEvent, GameSet,
+    GameState, GrowthEvent, InputBuffer, MoveTimer,
 };
 use rendering::RenderingPlugin;
 use snake::SnakePlugin;
@@ -20,6 +20,18 @@ use ui::UiPlugin;
 
 fn main() {
     App::new()
+        // Enforce deterministic cross-plugin execution order every frame:
+        //   Movement → Collision → Effects → Rendering
+        .configure_sets(
+            Update,
+            (
+                GameSet::Movement,
+                GameSet::Collision,
+                GameSet::Effects,
+                GameSet::Rendering,
+            )
+                .chain(),
+        )
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
