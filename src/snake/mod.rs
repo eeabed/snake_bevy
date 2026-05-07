@@ -140,6 +140,26 @@ pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entit
         .id()
 }
 
+/// Maps the current keyboard state to a [`Direction`], falling back to
+/// `current` when no directional key is held.
+///
+/// Lives here rather than on `Direction` itself because it depends on a Bevy
+/// input resource — a concern that doesn't belong on a plain data enum.
+fn direction_from_input(keyboard_input: &ButtonInput<KeyCode>, current: Direction) -> Direction {
+    if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
+        Direction::Left
+    } else if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD)
+    {
+        Direction::Right
+    } else if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
+        Direction::Up
+    } else if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
+        Direction::Down
+    } else {
+        current
+    }
+}
+
 /// System to read keyboard input and queue direction changes.
 fn snake_movement_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
@@ -156,7 +176,7 @@ fn snake_movement_input(
         let last_direction = input_buffer.last_direction().unwrap_or(head.direction);
 
         // Get new direction from input
-        let new_direction = Direction::from_input(&keyboard_input, last_direction);
+        let new_direction = direction_from_input(&keyboard_input, last_direction);
 
         // If direction changed and it's not opposite to the last direction, queue it
         if new_direction != last_direction && new_direction != last_direction.opposite() {
@@ -275,7 +295,7 @@ fn game_over_check(
 
     if let Some(head_pos) = head_positions.iter().next() {
         for (segment_pos, segment_entity) in segment_positions.iter() {
-            if head_pos.collides_with(segment_pos)
+            if head_pos == segment_pos
                 && game_state.snake_segments.len() > 1
                 && game_state.snake_segments[1] != segment_entity
             {

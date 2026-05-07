@@ -9,13 +9,6 @@ pub struct Position {
     pub y: i32,
 }
 
-impl Position {
-    /// Check if this position collides with another position.
-    pub fn collides_with(&self, other: &Position) -> bool {
-        self.x == other.x && self.y == other.y
-    }
-}
-
 /// Component to track previous position for smooth interpolation.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct PreviousPosition {
@@ -39,26 +32,6 @@ impl Direction {
             Direction::Right => Direction::Left,
             Direction::Up => Direction::Down,
             Direction::Down => Direction::Up,
-        }
-    }
-
-    /// Reads keyboard input and returns the corresponding direction.
-    pub fn from_input(keyboard_input: &ButtonInput<KeyCode>, current: Direction) -> Direction {
-        if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
-            Direction::Left
-        } else if keyboard_input.pressed(KeyCode::ArrowRight)
-            || keyboard_input.pressed(KeyCode::KeyD)
-        {
-            Direction::Right
-        } else if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW)
-        {
-            Direction::Up
-        } else if keyboard_input.pressed(KeyCode::ArrowDown)
-            || keyboard_input.pressed(KeyCode::KeyS)
-        {
-            Direction::Down
-        } else {
-            current
         }
     }
 }

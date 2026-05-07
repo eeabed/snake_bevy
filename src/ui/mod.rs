@@ -280,6 +280,25 @@ fn spawn_game_over_screen_system(
     }
 }
 
+/// Resets all shared game state and spawns a fresh snake head and food.
+///
+/// Called by both `start_game_from_menu` and `restart_game` to avoid
+/// duplicating the five-step initialisation sequence.
+fn begin_new_game(
+    commands: &mut Commands,
+    game_state: &mut GameState,
+    move_timer: &mut MoveTimer,
+) {
+    game_state.snake_segments.clear();
+    game_state.score = 0;
+    game_state.phase = GamePhase::Playing;
+    move_timer.elapsed = Duration::ZERO;
+
+    let head_entity = spawn_snake_head(commands);
+    game_state.snake_segments.push(head_entity);
+    spawn_food(commands, &[INITIAL_SNAKE_POSITION]);
+}
+
 /// System to start the game from the menu.
 fn start_game_from_menu(
     mut commands: Commands,
@@ -289,29 +308,14 @@ fn start_game_from_menu(
     menu_ui: Query<Entity, With<MenuUI>>,
 ) {
     if game_state.phase == GamePhase::Menu && keyboard_input.just_pressed(KeyCode::Space) {
-        // Despawn menu UI
         for entity in menu_ui.iter() {
             commands.entity(entity).despawn();
         }
-
-        // Initialize game state
-        game_state.snake_segments.clear();
-        game_state.score = 0;
-        game_state.phase = GamePhase::Playing;
-
-        // Reset move timer
-        move_timer.elapsed = Duration::ZERO;
-
-        // Spawn initial snake
-        let head_entity = spawn_snake_head(&mut commands);
-        game_state.snake_segments.push(head_entity);
-
-        // Spawn initial food
-        spawn_food(&mut commands, &[INITIAL_SNAKE_POSITION]);
+        begin_new_game(&mut commands, &mut game_state, &mut move_timer);
     }
 }
 
-/// System to restart the game from game over screen.
+/// System to restart the game from the game over screen.
 #[allow(clippy::too_many_arguments)]
 fn restart_game(
     mut commands: Commands,
@@ -324,31 +328,14 @@ fn restart_game(
     game_over_ui: Query<Entity, With<GameOverUI>>,
 ) {
     if game_state.phase == GamePhase::GameOver && keyboard_input.just_pressed(KeyCode::Space) {
-        // Despawn all existing snake segments and food
         for entity in segments.iter().chain(food.iter()) {
             commands.entity(entity).despawn();
         }
-
-        // Despawn game over UI
         for entity in game_over_ui.iter() {
             commands.entity(entity).despawn();
         }
-
-        // Reset game state
-        game_state.snake_segments.clear();
-        game_state.score = 0;
-        game_state.phase = GamePhase::Playing;
-
-        // Clear input buffer and reset move timer
         input_buffer.clear();
-        move_timer.elapsed = Duration::ZERO;
-
-        // Spawn new snake head
-        let head_entity = spawn_snake_head(&mut commands);
-        game_state.snake_segments.push(head_entity);
-
-        // Spawn new food
-        spawn_food(&mut commands, &[INITIAL_SNAKE_POSITION]);
+        begin_new_game(&mut commands, &mut game_state, &mut move_timer);
     }
 }
 

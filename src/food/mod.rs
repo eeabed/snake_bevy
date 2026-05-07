@@ -92,7 +92,7 @@ fn food_collision(
 
     if let Some(head_pos) = head_positions.iter().next() {
         for (food_entity, food_pos) in food_positions.iter() {
-            if head_pos.collides_with(food_pos) {
+            if head_pos == food_pos {
                 commands.entity(food_entity).despawn();
                 game_state.score += 1;
                 growth_writer.write(GrowthEvent);
