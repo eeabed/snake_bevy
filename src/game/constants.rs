@@ -17,16 +17,18 @@ pub const WINDOW_PADDING: f32 = 20.0;
 // Timing
 pub const MOVE_INTERVAL: Duration = Duration::from_millis(150);
 
-// Colors - using HDR values (> 1.0) for bloom glow effects
-pub const SNAKE_HEAD_COLOR: Color = Color::srgba(1.2, 1.2, 1.2, 1.0);
-pub const SNAKE_SEGMENT_COLOR: Color = Color::srgba(0.4, 0.6, 0.4, 1.0);
+// Colors - using HDR values (> 1.0) for bloom glow effects.
+// Head and body share the same hue so they read as one organism; head is
+// pushed into HDR (>1.0 in green channel) so the bloom pass picks it up,
+// while the body stays just below 1.0 — vivid but non-blooming.
+pub const SNAKE_HEAD_COLOR: Color = Color::srgba(0.6, 1.5, 0.6, 1.0);
+pub const SNAKE_SEGMENT_COLOR: Color = Color::srgba(0.3, 0.9, 0.3, 1.0);
 pub const FOOD_COLOR: Color = Color::srgba(2.5, 0.3, 0.3, 1.0); // HDR red for glow
 pub const ARENA_COLOR: Color = Color::srgba(0.08, 0.08, 0.1, 1.0);
 pub const BACKGROUND_COLOR: Color = Color::srgba(0.02, 0.02, 0.03, 1.0);
 
 // Effect colors - HDR for bloom
 pub const FOOD_EATEN_COLOR: Color = Color::srgba(3.0, 3.0, 1.0, 0.8); // Bright yellow flash
-pub const SNAKE_HEAD_GLOW_COLOR: Color = Color::srgba(0.5, 1.5, 0.5, 0.4); // Subtle green glow
 pub const ARENA_BORDER_COLOR: Color = Color::srgba(0.3, 0.5, 0.8, 0.6); // Blue border glow
 
 // Score-text exclusion zone: cells near the top-left corner that the UI overlaps.

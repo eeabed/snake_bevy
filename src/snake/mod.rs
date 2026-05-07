@@ -6,9 +6,19 @@ use bevy_vector_shapes::prelude::*;
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CORNER_RADIUS, Direction, GamePhase, GameSet, GameState,
     GrowingSegment, GrowthEvent, INITIAL_SNAKE_POSITION, InputBuffer, MOVE_INTERVAL, Position,
-    PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_HEAD_GLOW_COLOR, SNAKE_SEGMENT_COLOR, SnakeEye,
-    SnakeHead, SnakeSegment, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
+    PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_SEGMENT_COLOR, SnakeEye, SnakeHead, SnakeSegment,
+    Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
 };
+
+// Visual sizing: head fills almost the full cell so it reads as larger than
+// the body, and the body sits inside its cell so adjacent segments show a
+// visible gap (~14% of CELL_SIZE).
+const HEAD_SIZE_FACTOR: f32 = 0.92;
+const SEGMENT_SIZE_FACTOR: f32 = 0.86;
+
+// Tail tapering — the last few segments are scaled down progressively so the
+// snake doesn't end abruptly. Index 0 is the tail itself.
+const TAIL_TAPER: [f32; 3] = [0.65, 0.78, 0.90];
 
 /// Plugin for snake-related systems.
 pub struct SnakePlugin;
@@ -29,6 +39,10 @@ impl Plugin for SnakePlugin {
             Update,
             (snake_growth, game_over_check).chain().in_set(GameSet::Effects),
         );
+        // Visual tail tapering belongs in the Rendering set so it runs after
+        // `growing_segment_animation` (whose final-frame `scale = 1.0` write
+        // we want to overwrite for tail segments).
+        app.add_systems(Update, taper_tail.in_set(GameSet::Rendering));
     }
 }
 
@@ -46,10 +60,23 @@ type SnakeHeadQuery<'w, 's> = Query<
 type PositionQuery<'w, 's> = Query<'w, 's, (&'static mut Position, &'static mut PreviousPosition)>;
 
 /// Spawns the snake head entity with eyes.
+///
+/// The head is colored in HDR-green (matches the body's hue but pushed past
+/// 1.0 so the bloom pass picks it up — no separate "glow disc" child needed).
+/// Eyes are positioned toward the front of the head (assumes the head spawns
+/// facing `Right`; `update_head_rotation` rotates the children to follow).
 pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
-    let size = CELL_SIZE * 0.9;
+    let size = CELL_SIZE * HEAD_SIZE_FACTOR;
     // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
     let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
+
+    // Eye geometry, in the head's local pixel space.
+    //   forward: pushed toward the front (positive x = "Right" direction)
+    //   lateral: spaced wider apart so the two eyes don't read as a colon
+    //   radius:  large enough to be visibly two distinct dots at ~25 px cells
+    let eye_forward = CELL_SIZE * 0.18;
+    let eye_lateral = CELL_SIZE * 0.22;
+    let eye_radius = CELL_SIZE * 0.11;
 
     commands
         .spawn((
@@ -77,25 +104,12 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
             },
         ))
         .with_children(|parent| {
-            // Glow effect behind the head (rendered first, behind everything)
-            parent.spawn(ShapeBundle::circle(
-                &ShapeConfig {
-                    color: SNAKE_HEAD_GLOW_COLOR,
-                    alpha_mode: ShapeAlphaMode::Add,
-                    transform: Transform::from_xyz(0.0, 0.0, -0.1),
-                    ..ShapeConfig::default_2d()
-                },
-                CELL_SIZE * 0.8,
-            ));
-
-            let eye_radius = CELL_SIZE * 0.08;
-
-            // Right eye (relative to Right direction)
+            // Front-right eye (relative to spawn direction = Right).
             parent.spawn((
                 ShapeBundle::circle(
                     &ShapeConfig {
                         color: Color::srgba(0.0, 0.0, 0.0, 1.0),
-                        transform: Transform::from_xyz(CELL_SIZE * 0.15, CELL_SIZE * 0.15, 0.1),
+                        transform: Transform::from_xyz(eye_forward, eye_lateral, 0.1),
                         ..ShapeConfig::default_2d()
                     },
                     eye_radius,
@@ -103,12 +117,12 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
                 SnakeEye,
             ));
 
-            // Left eye (relative to Right direction)
+            // Front-left eye.
             parent.spawn((
                 ShapeBundle::circle(
                     &ShapeConfig {
                         color: Color::srgba(0.0, 0.0, 0.0, 1.0),
-                        transform: Transform::from_xyz(CELL_SIZE * 0.15, -CELL_SIZE * 0.15, 0.1),
+                        transform: Transform::from_xyz(eye_forward, -eye_lateral, 0.1),
                         ..ShapeConfig::default_2d()
                     },
                     eye_radius,
@@ -120,8 +134,11 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
 }
 
 /// Spawns a snake body segment at the given position.
+///
+/// Sized below the cell so adjacent segments leave a small visible gap —
+/// the body reads as a chain of pills rather than a continuous rectangle.
 pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
-    let size = CELL_SIZE;
+    let size = CELL_SIZE * SEGMENT_SIZE_FACTOR;
     // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
     let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
 
@@ -321,6 +338,37 @@ fn game_over_check(
             game_state.phase = GamePhase::GameOver;
             info!("Game Over! Final score: {}", game_state.score);
             break;
+        }
+    }
+}
+
+/// Applies a progressive scale-down to the last few snake segments so the
+/// snake tapers to a tail rather than ending in a square stub.
+///
+/// Per-frame cost is one transform write per segment. Segments still in the
+/// grow-in animation (`GrowingSegment`) are skipped so the two scale writers
+/// don't fight; once the grow-animation removes its component, this system
+/// takes over and applies the tapered scale on the next frame.
+fn taper_tail(
+    game_state: Res<GameState>,
+    mut segments: Query<&mut Transform, (With<SnakeSegment>, Without<GrowingSegment>)>,
+) {
+    let total = game_state.snake_segments.len();
+    if total < 2 {
+        return; // only the head — nothing to taper.
+    }
+
+    // game_state.snake_segments[0] is the head; body segments are at 1..total.
+    for (i, &entity) in game_state.snake_segments.iter().enumerate().skip(1) {
+        let from_tail = total - 1 - i;
+        let scale_factor = TAIL_TAPER.get(from_tail).copied().unwrap_or(1.0);
+
+        let Ok(mut transform) = segments.get_mut(entity) else {
+            continue;
+        };
+        let target = Vec3::splat(scale_factor);
+        if transform.scale != target {
+            transform.scale = target;
         }
     }
 }

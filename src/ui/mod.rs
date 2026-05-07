@@ -26,6 +26,7 @@ impl Plugin for UiPlugin {
                 start_game_from_menu,
                 restart_game,
                 update_score_text,
+                update_score_visibility,
                 spawn_game_over_screen_system,
                 spawn_win_screen_system,
             )
@@ -85,7 +86,8 @@ fn setup_system(mut commands: Commands) {
         Vec2::new(arena_width + 4.0, arena_height + 4.0),
     ));
 
-    // Score text (initially hidden until game starts)
+    // Score text — hidden at boot (Menu phase) and toggled by
+    // `update_score_visibility` based on the current `GamePhase`.
     commands.spawn((
         Text::from("Score: 0"),
         TextFont {
@@ -100,6 +102,7 @@ fn setup_system(mut commands: Commands) {
             left: Val::Px(10.0),
             ..default()
         },
+        Visibility::Hidden,
         ScoreText,
     ));
 
@@ -444,4 +447,26 @@ fn update_score_text(
     };
     *text = Text::from(format!("Score: {}", game_state.score));
     *last_score = Some(game_state.score);
+}
+
+/// Shows the score HUD only during `GamePhase::Playing`, hides it on the
+/// menu, game-over, and win screens. Tracks the previous phase in a `Local`
+/// so we only mutate `Visibility` on transitions.
+fn update_score_visibility(
+    game_state: Res<GameState>,
+    mut last_phase: Local<Option<GamePhase>>,
+    mut score: Query<&mut Visibility, With<ScoreText>>,
+) {
+    if *last_phase == Some(game_state.phase) {
+        return;
+    }
+    let Ok(mut visibility) = score.single_mut() else {
+        return;
+    };
+    *visibility = if game_state.phase == GamePhase::Playing {
+        Visibility::Inherited
+    } else {
+        Visibility::Hidden
+    };
+    *last_phase = Some(game_state.phase);
 }
