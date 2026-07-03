@@ -78,18 +78,22 @@ pub struct GrowingSegment {
     pub timer: Timer,
 }
 
+// The UI markers below derive `Default + Clone` in addition to `Component`
+// because they are spawned through `bsn!` scenes, whose template machinery
+// requires both.
+
 /// Component to mark the score display UI element.
-#[derive(Component)]
+#[derive(Component, Default, Clone)]
 pub struct ScoreText;
 
 /// Component to mark the game over overlay UI.
-#[derive(Component)]
+#[derive(Component, Default, Clone)]
 pub struct GameOverUI;
 
 /// Component to mark the win-screen overlay UI.
-#[derive(Component)]
+#[derive(Component, Default, Clone)]
 pub struct WinUI;
 
 /// Component to mark the start menu UI.
-#[derive(Component)]
+#[derive(Component, Default, Clone)]
 pub struct MenuUI;

@@ -1,4 +1,8 @@
 //! UI plugin - handles menus, game over screen, score display, and game flow.
+//!
+//! Screens are declared with Bevy's BSN scene notation (`bsn!`): each screen
+//! is a plain function returning `impl Scene`, composed from the `overlay`
+//! and `label` building blocks below and spawned via `Commands::spawn_scene`.
 
 use bevy::camera::Hdr;
 use bevy::post_process::bloom::Bloom;
@@ -15,6 +19,17 @@ use crate::game::{
     MenuUI, PulseEffect, ScoreText, SnakeHead, SnakeSegment, WinUI, Z_BACKGROUND,
 };
 use crate::snake::spawn_snake_head;
+
+// Shared UI palette.
+const TITLE_GREEN: Color = Color::srgba(0.3, 1.0, 0.3, 1.0);
+const HINT_GRAY: Color = Color::srgba(0.8, 0.8, 0.8, 1.0);
+const GAME_OVER_RED: Color = Color::srgba(1.0, 0.3, 0.3, 1.0);
+// Start instructions — same hue as the title, slightly dimmer so the title
+// stays the dominant element on the menu.
+const START_GREEN: Color = Color::srgba(0.4, 0.85, 0.4, 1.0);
+const MENU_GOLD: Color = Color::srgba(0.9, 0.8, 0.3, 1.0);
+const RECORD_GOLD: Color = Color::srgba(1.0, 0.85, 0.3, 1.0);
+const BEST_GRAY: Color = Color::srgba(0.6, 0.6, 0.6, 1.0);
 
 /// Plugin for UI and game flow systems.
 pub struct UiPlugin;
@@ -75,7 +90,8 @@ fn setup_system(mut commands: Commands, high_score: Res<HighScore>) {
         Transform::from_translation(Vec3::new(0.0, 0.0, Z_BACKGROUND)),
     ));
 
-    // Glowing arena border using hollow rectangle
+    // Glowing arena border using hollow rectangle. Stays a plain spawn:
+    // `ShapeBundle` is a bundle, not a component, so it can't appear in `bsn!`.
     let arena_width = ARENA_WIDTH as f32 * CELL_SIZE;
     let arena_height = ARENA_HEIGHT as f32 * CELL_SIZE;
     commands.spawn(ShapeBundle::rect(
@@ -91,240 +107,156 @@ fn setup_system(mut commands: Commands, high_score: Res<HighScore>) {
         Vec2::new(arena_width + 4.0, arena_height + 4.0),
     ));
 
-    // Score text — hidden at boot (Menu phase) and toggled by
-    // `update_score_visibility` based on the current `GamePhase`.
-    commands.spawn((
-        Text::from("Score: 0"),
-        TextFont {
-            font_size: FontSize::Px(20.0),
-            weight: FontWeight::BOLD,
-            ..default()
-        },
-        TextColor(Color::WHITE),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            left: Val::Px(10.0),
-            ..default()
-        },
-        Visibility::Hidden,
-        ScoreText,
-    ));
+    commands.spawn_scene(score_hud());
 
     // Show start menu (we're always in `Menu` phase at Startup).
-    spawn_start_menu(&mut commands, high_score.score);
+    commands.spawn_scene(start_menu(high_score.score));
 }
 
-/// Spawns the start menu UI.
-fn spawn_start_menu(commands: &mut Commands, high_score: usize) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)),
-            MenuUI,
-        ))
-        .with_children(|parent| {
-            // "SNAKE" title
-            parent.spawn((
-                Text::from("SNAKE"),
-                TextFont {
-                    font_size: FontSize::Px(80.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.3, 1.0, 0.3, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(40.0)),
-                    ..default()
-                },
-            ));
-
-            // Persistent best score from previous sessions — only shown once
-            // the player has actually scored something.
-            if high_score > 0 {
-                parent.spawn((
-                    Text::from(format!("High Score: {}", high_score)),
-                    TextFont {
-                        font_size: FontSize::Px(20.0),
-                        weight: FontWeight::BOLD,
-                        ..default()
-                    },
-                    TextColor(Color::srgba(0.9, 0.8, 0.3, 1.0)),
-                    Node {
-                        margin: UiRect::bottom(Val::Px(30.0)),
-                        ..default()
-                    },
-                ));
-            }
-
-            // Controls section
-            parent.spawn((
-                Text::from("CONTROLS"),
-                TextFont {
-                    font_size: FontSize::Px(24.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                Node {
-                    margin: UiRect::bottom(Val::Px(15.0)),
-                    ..default()
-                },
-            ));
-
-            parent.spawn((
-                Text::from("Arrow Keys or WASD to move"),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(10.0)),
-                    ..default()
-                },
-            ));
-
-            parent.spawn((
-                Text::from("Eat the red apples to grow"),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(10.0)),
-                    ..default()
-                },
-            ));
-
-            parent.spawn((
-                Text::from("Don't run into yourself!"),
-                TextFont {
-                    font_size: FontSize::Px(18.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(40.0)),
-                    ..default()
-                },
-            ));
-
-            // Start instructions — same hue as the title, slightly dimmer so
-            // the title stays the dominant element on the menu.
-            parent.spawn((
-                Text::from("Press SPACE to start"),
-                TextFont {
-                    font_size: FontSize::Px(24.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.4, 0.85, 0.4, 1.0)),
-            ));
-        });
+/// The score HUD — hidden at boot (Menu phase) and toggled by
+/// `update_score_visibility` based on the current `GamePhase`.
+fn score_hud() -> impl Scene {
+    bsn! {
+        ScoreText
+        Text("Score: 0")
+        TextFont {
+            font_size: { FontSize::Px(20.0) },
+            weight: FontWeight::BOLD,
+        }
+        TextColor(Color::WHITE)
+        Node {
+            position_type: PositionType::Absolute,
+            top: px(10),
+            left: px(10),
+        }
+        Visibility::Hidden
+    }
 }
 
-/// Spawns the line on an end screen that reports how the run compared to the
-/// stored record: a gold "NEW HIGH SCORE!" banner when the run beat it, or a
-/// dim "Best: N" reminder otherwise.
+/// Full-screen centered column over a translucent black scrim — the shared
+/// scaffold of the start menu and both end screens.
+fn overlay<L: SceneList>(scrim_alpha: f32, content: L) -> impl Scene {
+    bsn! {
+        Node {
+            position_type: PositionType::Absolute,
+            width: percent(100),
+            height: percent(100),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            flex_direction: FlexDirection::Column,
+        }
+        BackgroundColor({ Color::srgba(0.0, 0.0, 0.0, scrim_alpha) })
+        Children [{ content }]
+    }
+}
+
+/// One line of bold text with a gap below it — every text row on every
+/// screen is one of these.
+fn label(text: String, size: f32, color: Color, gap_below: f32) -> impl Scene {
+    bsn! {
+        Text(text)
+        TextFont {
+            font_size: { FontSize::Px(size) },
+            weight: FontWeight::BOLD,
+        }
+        TextColor(color)
+        Node { margin: { UiRect::bottom(Val::Px(gap_below)) } }
+    }
+}
+
+/// The start menu screen.
+///
+/// The `(marker, scene)` tuples here and in the end screens merge both parts
+/// onto the same root entity — tuples of scenes implement [`Scene`].
+fn start_menu(high_score: usize) -> impl Scene {
+    (
+        bsn! { MenuUI },
+        overlay(
+            0.85,
+            bsn_list![
+                label("SNAKE".into(), 80.0, TITLE_GREEN, 40.0),
+                { menu_high_score(high_score) },
+                label("CONTROLS".into(), 24.0, Color::WHITE, 15.0),
+                label("Arrow Keys or WASD to move".into(), 18.0, HINT_GRAY, 10.0),
+                label("Eat the red apples to grow".into(), 18.0, HINT_GRAY, 10.0),
+                label("Don't run into yourself!".into(), 18.0, HINT_GRAY, 40.0),
+                label("Press SPACE to start".into(), 24.0, START_GREEN, 0.0),
+            ],
+        ),
+    )
+}
+
+/// Persistent best score from previous sessions — only shown once the player
+/// has actually scored something (`None` spawns nothing).
+fn menu_high_score(high_score: usize) -> Option<impl SceneList> {
+    (high_score > 0)
+        .then(|| bsn_list![label(format!("High Score: {high_score}"), 20.0, MENU_GOLD, 30.0)])
+}
+
+/// Shared layout of the game-over and win screens: title, final score,
+/// record comparison, restart hint.
+///
+/// The scrim alpha is high enough to make the overlay text dominant, but
+/// still translucent so the player can see where they died.
+fn end_screen(
+    title: String,
+    title_color: Color,
+    score: usize,
+    previous_best: usize,
+    hint: String,
+) -> impl Scene {
+    overlay(
+        0.82,
+        bsn_list![
+            label(title, 60.0, title_color, 20.0),
+            label(format!("Final Score: {}", score), 30.0, Color::WHITE, 12.0),
+            record_line(score, previous_best),
+            label(hint, 20.0, HINT_GRAY, 0.0),
+        ],
+    )
+}
+
+/// The line on an end screen that reports how the run compared to the stored
+/// record: a gold "NEW HIGH SCORE!" banner when the run beat it, or a dim
+/// "Best: N" reminder otherwise.
 ///
 /// Callers must pass the record as it was *before* this run is persisted —
 /// see the ordering note on `update_high_score` in the plugin's system chain.
-fn spawn_record_line(parent: &mut ChildSpawnerCommands, score: usize, previous_best: usize) {
+fn record_line(score: usize, previous_best: usize) -> impl Scene {
     let (text, color) = if score > previous_best {
-        ("NEW HIGH SCORE!".to_string(), Color::srgba(1.0, 0.85, 0.3, 1.0))
+        ("NEW HIGH SCORE!".to_string(), RECORD_GOLD)
     } else {
-        (format!("Best: {}", previous_best), Color::srgba(0.6, 0.6, 0.6, 1.0))
+        (format!("Best: {}", previous_best), BEST_GRAY)
     };
-    parent.spawn((
-        Text::from(text),
-        TextFont {
-            font_size: FontSize::Px(22.0),
-            weight: FontWeight::BOLD,
-            ..default()
-        },
-        TextColor(color),
-        Node {
-            margin: UiRect::bottom(Val::Px(30.0)),
-            ..default()
-        },
-    ));
+    label(text, 22.0, color, 30.0)
 }
 
-/// Spawns the game over screen UI.
-fn spawn_game_over_screen(commands: &mut Commands, score: usize, previous_best: usize) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
-            // Dim scrim — high enough alpha to make the overlay text dominant,
-            // but still translucent so the player can see where they died.
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
-            GameOverUI,
-        ))
-        .with_children(|parent| {
-            // "GAME OVER" text
-            parent.spawn((
-                Text::from("GAME OVER"),
-                TextFont {
-                    font_size: FontSize::Px(60.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(1.0, 0.3, 0.3, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(20.0)),
-                    ..default()
-                },
-            ));
+/// The game over screen.
+fn game_over_screen(score: usize, previous_best: usize) -> impl Scene {
+    (
+        bsn! { GameOverUI },
+        end_screen(
+            "GAME OVER".into(),
+            GAME_OVER_RED,
+            score,
+            previous_best,
+            "Press SPACE to restart".into(),
+        ),
+    )
+}
 
-            // Final score text
-            parent.spawn((
-                Text::from(format!("Final Score: {}", score)),
-                TextFont {
-                    font_size: FontSize::Px(30.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                Node {
-                    margin: UiRect::bottom(Val::Px(12.0)),
-                    ..default()
-                },
-            ));
-
-            spawn_record_line(parent, score, previous_best);
-
-            // Restart instructions
-            parent.spawn((
-                Text::from("Press SPACE to restart"),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
-            ));
-        });
+/// The win screen, shown when the player fills the arena.
+fn win_screen(score: usize, previous_best: usize) -> impl Scene {
+    (
+        bsn! { WinUI },
+        end_screen(
+            "YOU WIN!".into(),
+            TITLE_GREEN,
+            score,
+            previous_best,
+            "Press SPACE to play again".into(),
+        ),
+    )
 }
 
 /// System to spawn game over screen when game ends.
@@ -337,67 +269,8 @@ fn spawn_game_over_screen_system(
     // Only spawn if game just ended and no UI exists yet
     if game_state.is_changed() && game_state.phase == GamePhase::GameOver && game_over_ui.is_empty()
     {
-        spawn_game_over_screen(&mut commands, game_state.score, high_score.score);
+        commands.spawn_scene(game_over_screen(game_state.score, high_score.score));
     }
-}
-
-/// Spawns the win-screen UI.
-fn spawn_win_screen(commands: &mut Commands, score: usize, previous_best: usize) {
-    commands
-        .spawn((
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                flex_direction: FlexDirection::Column,
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.82)),
-            WinUI,
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                Text::from("YOU WIN!"),
-                TextFont {
-                    font_size: FontSize::Px(60.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.3, 1.0, 0.3, 1.0)),
-                Node {
-                    margin: UiRect::bottom(Val::Px(20.0)),
-                    ..default()
-                },
-            ));
-
-            parent.spawn((
-                Text::from(format!("Final Score: {}", score)),
-                TextFont {
-                    font_size: FontSize::Px(30.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::WHITE),
-                Node {
-                    margin: UiRect::bottom(Val::Px(12.0)),
-                    ..default()
-                },
-            ));
-
-            spawn_record_line(parent, score, previous_best);
-
-            parent.spawn((
-                Text::from("Press SPACE to play again"),
-                TextFont {
-                    font_size: FontSize::Px(20.0),
-                    weight: FontWeight::BOLD,
-                    ..default()
-                },
-                TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
-            ));
-        });
 }
 
 /// System to spawn the win screen when the player fills the arena.
@@ -408,7 +281,7 @@ fn spawn_win_screen_system(
     high_score: Res<HighScore>,
 ) {
     if game_state.is_changed() && game_state.phase == GamePhase::Won && win_ui.is_empty() {
-        spawn_win_screen(&mut commands, game_state.score, high_score.score);
+        commands.spawn_scene(win_screen(game_state.score, high_score.score));
     }
 }
 
