@@ -1,5 +1,6 @@
 //! Snake game built with Bevy.
 
+use bevy::settings::SettingsPlugin;
 use bevy::{prelude::*, window::WindowResolution};
 use bevy_vector_shapes::prelude::*;
 
@@ -12,7 +13,7 @@ mod ui;
 use food::FoodPlugin;
 use game::{
     ARENA_HEIGHT, ARENA_WIDTH, BACKGROUND_COLOR, CELL_SIZE, CameraShake, FoodEatenEvent, GameSet,
-    GameState, GrowthEvent, InputBuffer, WINDOW_PADDING,
+    GameState, GrowthEvent, HighScore, InputBuffer, WINDOW_PADDING,
 };
 use rendering::RenderingPlugin;
 use snake::SnakePlugin;
@@ -33,6 +34,11 @@ fn main() {
             )
                 .chain(),
         )
+        // Persistent settings (high score). The type must be registered
+        // before `SettingsPlugin` is added — the plugin scans the type
+        // registry and loads the settings file the moment it is built.
+        .register_type::<HighScore>()
+        .add_plugins(SettingsPlugin::new("io.github.eeabed.snake_bevy"))
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {

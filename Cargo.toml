@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "tonemapping_luts", "zstd_rust"] }
+bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "bevy_settings", "tonemapping_luts", "zstd_rust"] }
 bevy_vector_shapes = "0.13"
 rand = "0.10"
 

@@ -3,6 +3,7 @@
 use bevy::camera::Hdr;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
+use bevy::settings::SaveSettings;
 use bevy::text::FontWeight;
 
 use bevy_vector_shapes::prelude::*;
@@ -10,8 +11,8 @@ use bevy_vector_shapes::prelude::*;
 use crate::food::spawn_food;
 use crate::game::{
     ARENA_BORDER_COLOR, ARENA_COLOR, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, Food,
-    GameOverUI, GamePhase, GameSet, GameState, INITIAL_SNAKE_POSITION, InputBuffer, MenuUI,
-    PulseEffect, ScoreText, SnakeHead, SnakeSegment, WinUI, Z_BACKGROUND,
+    GameOverUI, GamePhase, GameSet, GameState, HighScore, INITIAL_SNAKE_POSITION, InputBuffer,
+    MenuUI, PulseEffect, ScoreText, SnakeHead, SnakeSegment, WinUI, Z_BACKGROUND,
 };
 use crate::snake::spawn_snake_head;
 
@@ -29,6 +30,10 @@ impl Plugin for UiPlugin {
                 update_score_visibility,
                 spawn_game_over_screen_system,
                 spawn_win_screen_system,
+                // Must run after the two spawn systems: the end screens
+                // compare the final score against the *previous* record to
+                // decide whether to show "NEW HIGH SCORE!".
+                update_high_score,
             )
                 .chain()
                 .in_set(GameSet::Ui),
@@ -43,7 +48,7 @@ type SnakeEntityQuery<'w, 's> = Query<'w, 's, Entity, Or<(With<SnakeSegment>, Wi
 ///
 /// Runs once at app boot when `GameState::default()` is in `Menu` phase, so
 /// the start menu can be spawned unconditionally.
-fn setup_system(mut commands: Commands) {
+fn setup_system(mut commands: Commands, high_score: Res<HighScore>) {
     // Setup camera with HDR and bloom for glowing effects
     commands.spawn((
         Camera2d,
@@ -107,11 +112,11 @@ fn setup_system(mut commands: Commands) {
     ));
 
     // Show start menu (we're always in `Menu` phase at Startup).
-    spawn_start_menu(&mut commands);
+    spawn_start_menu(&mut commands, high_score.score);
 }
 
 /// Spawns the start menu UI.
-fn spawn_start_menu(commands: &mut Commands) {
+fn spawn_start_menu(commands: &mut Commands, high_score: usize) {
     commands
         .spawn((
             Node {
@@ -141,6 +146,24 @@ fn spawn_start_menu(commands: &mut Commands) {
                     ..default()
                 },
             ));
+
+            // Persistent best score from previous sessions — only shown once
+            // the player has actually scored something.
+            if high_score > 0 {
+                parent.spawn((
+                    Text::from(format!("High Score: {}", high_score)),
+                    TextFont {
+                        font_size: FontSize::Px(20.0),
+                        weight: FontWeight::BOLD,
+                        ..default()
+                    },
+                    TextColor(Color::srgba(0.9, 0.8, 0.3, 1.0)),
+                    Node {
+                        margin: UiRect::bottom(Val::Px(30.0)),
+                        ..default()
+                    },
+                ));
+            }
 
             // Controls section
             parent.spawn((
@@ -213,8 +236,35 @@ fn spawn_start_menu(commands: &mut Commands) {
         });
 }
 
+/// Spawns the line on an end screen that reports how the run compared to the
+/// stored record: a gold "NEW HIGH SCORE!" banner when the run beat it, or a
+/// dim "Best: N" reminder otherwise.
+///
+/// Callers must pass the record as it was *before* this run is persisted —
+/// see the ordering note on `update_high_score` in the plugin's system chain.
+fn spawn_record_line(parent: &mut ChildSpawnerCommands, score: usize, previous_best: usize) {
+    let (text, color) = if score > previous_best {
+        ("NEW HIGH SCORE!".to_string(), Color::srgba(1.0, 0.85, 0.3, 1.0))
+    } else {
+        (format!("Best: {}", previous_best), Color::srgba(0.6, 0.6, 0.6, 1.0))
+    };
+    parent.spawn((
+        Text::from(text),
+        TextFont {
+            font_size: FontSize::Px(22.0),
+            weight: FontWeight::BOLD,
+            ..default()
+        },
+        TextColor(color),
+        Node {
+            margin: UiRect::bottom(Val::Px(30.0)),
+            ..default()
+        },
+    ));
+}
+
 /// Spawns the game over screen UI.
-fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
+fn spawn_game_over_screen(commands: &mut Commands, score: usize, previous_best: usize) {
     commands
         .spawn((
             Node {
@@ -257,10 +307,12 @@ fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
                 },
                 TextColor(Color::WHITE),
                 Node {
-                    margin: UiRect::bottom(Val::Px(30.0)),
+                    margin: UiRect::bottom(Val::Px(12.0)),
                     ..default()
                 },
             ));
+
+            spawn_record_line(parent, score, previous_best);
 
             // Restart instructions
             parent.spawn((
@@ -280,16 +332,17 @@ fn spawn_game_over_screen_system(
     mut commands: Commands,
     game_state: Res<GameState>,
     game_over_ui: Query<Entity, With<GameOverUI>>,
+    high_score: Res<HighScore>,
 ) {
     // Only spawn if game just ended and no UI exists yet
     if game_state.is_changed() && game_state.phase == GamePhase::GameOver && game_over_ui.is_empty()
     {
-        spawn_game_over_screen(&mut commands, game_state.score);
+        spawn_game_over_screen(&mut commands, game_state.score, high_score.score);
     }
 }
 
 /// Spawns the win-screen UI.
-fn spawn_win_screen(commands: &mut Commands, score: usize) {
+fn spawn_win_screen(commands: &mut Commands, score: usize, previous_best: usize) {
     commands
         .spawn((
             Node {
@@ -328,10 +381,12 @@ fn spawn_win_screen(commands: &mut Commands, score: usize) {
                 },
                 TextColor(Color::WHITE),
                 Node {
-                    margin: UiRect::bottom(Val::Px(30.0)),
+                    margin: UiRect::bottom(Val::Px(12.0)),
                     ..default()
                 },
             ));
+
+            spawn_record_line(parent, score, previous_best);
 
             parent.spawn((
                 Text::from("Press SPACE to play again"),
@@ -350,9 +405,29 @@ fn spawn_win_screen_system(
     mut commands: Commands,
     game_state: Res<GameState>,
     win_ui: Query<Entity, With<WinUI>>,
+    high_score: Res<HighScore>,
 ) {
     if game_state.is_changed() && game_state.phase == GamePhase::Won && win_ui.is_empty() {
-        spawn_win_screen(&mut commands, game_state.score);
+        spawn_win_screen(&mut commands, game_state.score, high_score.score);
+    }
+}
+
+/// Persists a new record when a run ends (game over or win).
+///
+/// Ordered after the end-screen spawn systems in the plugin's chain so those
+/// systems still see the previous record when deciding whether to show
+/// "NEW HIGH SCORE!". The save is asynchronous (file I/O happens on another
+/// thread) and crash-safe: `bevy_settings` writes to a temp file and renames.
+fn update_high_score(
+    mut commands: Commands,
+    game_state: Res<GameState>,
+    mut high_score: ResMut<HighScore>,
+) {
+    let run_ended = game_state.is_changed()
+        && matches!(game_state.phase, GamePhase::GameOver | GamePhase::Won);
+    if run_ended && game_state.score > high_score.score {
+        high_score.score = game_state.score;
+        commands.queue(SaveSettings::IfChanged);
     }
 }
 

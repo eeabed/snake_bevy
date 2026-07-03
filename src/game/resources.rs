@@ -1,6 +1,7 @@
 //! Game resources (singleton state).
 
 use bevy::prelude::*;
+use bevy::settings::{ReflectSettingsGroup, SettingsGroup};
 use std::collections::VecDeque;
 
 use super::Direction;
@@ -35,6 +36,17 @@ impl Default for GameState {
             phase: GamePhase::Menu,
         }
     }
+}
+
+/// Persistent best score across sessions.
+///
+/// Loaded by `SettingsPlugin` when the app is built (falling back to the
+/// default on first run) and written to `settings.toml` in the platform's
+/// per-app settings directory whenever a run ends with a new record.
+#[derive(Resource, SettingsGroup, Reflect, Default)]
+#[reflect(Resource, SettingsGroup, Default)]
+pub struct HighScore {
+    pub score: usize,
 }
 
 /// Input buffer to queue direction changes.
