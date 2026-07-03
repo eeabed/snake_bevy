@@ -13,7 +13,7 @@ mod ui;
 use food::FoodPlugin;
 use game::{
     ARENA_HEIGHT, ARENA_WIDTH, BACKGROUND_COLOR, CELL_SIZE, CameraShake, FoodEatenEvent, GameSet,
-    GameState, GrowthEvent, HighScore, InputBuffer, WINDOW_PADDING,
+    GameState, GrowthEvent, HighScore, InputBuffer, StartRequested, WINDOW_PADDING,
 };
 use rendering::RenderingPlugin;
 use snake::SnakePlugin;
@@ -63,5 +63,6 @@ fn main() {
         // Events
         .add_message::<GrowthEvent>()
         .add_message::<FoodEatenEvent>()
+        .add_message::<StartRequested>()
         .run();
 }

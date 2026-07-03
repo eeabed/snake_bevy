@@ -5,10 +5,13 @@
 //! and `label` building blocks below and spawned via `Commands::spawn_scene`.
 
 use bevy::camera::Hdr;
+use bevy::picking::hover::Hovered;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy::settings::SaveSettings;
 use bevy::text::FontWeight;
+use bevy::ui::Pressed;
+use bevy::ui_widgets::{Activate, Button as WidgetButton};
 
 use bevy_vector_shapes::prelude::*;
 
@@ -16,7 +19,7 @@ use crate::food::spawn_food;
 use crate::game::{
     ARENA_BORDER_COLOR, ARENA_COLOR, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, Food,
     GameOverUI, GamePhase, GameSet, GameState, HighScore, INITIAL_SNAKE_POSITION, InputBuffer,
-    MenuUI, PulseEffect, ScoreText, SnakeHead, SnakeSegment, WinUI, Z_BACKGROUND,
+    MenuUI, PulseEffect, ScoreText, SnakeHead, SnakeSegment, StartRequested, WinUI, Z_BACKGROUND,
 };
 use crate::snake::spawn_snake_head;
 
@@ -30,6 +33,11 @@ const START_GREEN: Color = Color::srgba(0.4, 0.85, 0.4, 1.0);
 const MENU_GOLD: Color = Color::srgba(0.9, 0.8, 0.3, 1.0);
 const RECORD_GOLD: Color = Color::srgba(1.0, 0.85, 0.3, 1.0);
 const BEST_GRAY: Color = Color::srgba(0.6, 0.6, 0.6, 1.0);
+// Action-button backgrounds: same green family as the snake, stepping
+// brighter on hover and brighter again while pressed.
+const BUTTON_BG: Color = Color::srgba(0.10, 0.32, 0.10, 1.0);
+const BUTTON_BG_HOVERED: Color = Color::srgba(0.14, 0.45, 0.14, 1.0);
+const BUTTON_BG_PRESSED: Color = Color::srgba(0.18, 0.58, 0.18, 1.0);
 
 /// Plugin for UI and game flow systems.
 pub struct UiPlugin;
@@ -49,6 +57,9 @@ impl Plugin for UiPlugin {
                 // compare the final score against the *previous* record to
                 // decide whether to show "NEW HIGH SCORE!".
                 update_high_score,
+                // Cosmetic hover/pressed feedback — no ordering constraints,
+                // it just lives at the end of the UI chain.
+                button_feedback,
             )
                 .chain()
                 .in_set(GameSet::Ui),
@@ -171,6 +182,60 @@ fn label(text: String, size_vmin: f32, color: Color, gap_below_vmin: f32) -> imp
     }
 }
 
+/// A clickable action button (START / RESTART / PLAY AGAIN).
+///
+/// Built on the headless `bevy_ui_widgets` button: the widget manages the
+/// `Pressed` state and emits [`Activate`] on click (and on Enter/Space when
+/// focused). The observer turns that into a [`StartRequested`] message so
+/// buttons and the SPACE key share one start/restart code path. `Hovered` is
+/// kept up to date by UI picking; `button_feedback` maps both states to
+/// background colors.
+fn action_button(text: String) -> impl Scene {
+    bsn! {
+        WidgetButton
+        Hovered
+        Node {
+            padding: { UiRect::axes(Val::VMin(4.6), Val::VMin(1.7)) },
+            border: { UiRect::all(Val::VMin(0.4)) },
+            border_radius: { BorderRadius::all(Val::VMin(1.9)) },
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            margin: { UiRect::bottom(Val::VMin(1.9)) },
+        }
+        BackgroundColor(BUTTON_BG)
+        BorderColor::from(START_GREEN)
+        on(|_: On<Activate>, mut requests: MessageWriter<StartRequested>| {
+            requests.write(StartRequested);
+        })
+        Children [(
+            Text(text)
+            TextFont {
+                font_size: { FontSize::VMin(4.6) },
+                weight: FontWeight::BOLD,
+            }
+            TextColor(Color::WHITE)
+        )]
+    }
+}
+
+/// Applies hover/pressed background feedback to the action buttons.
+fn button_feedback(
+    mut buttons: Query<(&mut BackgroundColor, &Hovered, Has<Pressed>), With<WidgetButton>>,
+) {
+    for (mut bg, hovered, pressed) in &mut buttons {
+        let target = if pressed {
+            BUTTON_BG_PRESSED
+        } else if hovered.get() {
+            BUTTON_BG_HOVERED
+        } else {
+            BUTTON_BG
+        };
+        if bg.0 != target {
+            bg.0 = target;
+        }
+    }
+}
+
 /// The start menu screen.
 ///
 /// The `(marker, scene)` tuples here and in the end screens merge both parts
@@ -187,7 +252,8 @@ fn start_menu(high_score: usize) -> impl Scene {
                 label("Arrow Keys or WASD to move".into(), 3.5, HINT_GRAY, 1.9),
                 label("Eat the red apples to grow".into(), 3.5, HINT_GRAY, 1.9),
                 label("Don't run into yourself!".into(), 3.5, HINT_GRAY, 7.7),
-                label("Press SPACE to start".into(), 4.6, START_GREEN, 0.0),
+                action_button("START".into()),
+                label("or press SPACE".into(), 2.9, BEST_GRAY, 0.0),
             ],
         ),
     )
@@ -210,7 +276,7 @@ fn end_screen(
     title_color: Color,
     score: usize,
     previous_best: usize,
-    hint: String,
+    button_text: String,
 ) -> impl Scene {
     overlay(
         0.82,
@@ -218,7 +284,8 @@ fn end_screen(
             label(title, 11.5, title_color, 3.8),
             label(format!("Final Score: {}", score), 5.8, Color::WHITE, 2.3),
             record_line(score, previous_best),
-            label(hint, 3.8, HINT_GRAY, 0.0),
+            action_button(button_text),
+            label("or press SPACE".into(), 2.9, BEST_GRAY, 0.0),
         ],
     )
 }
@@ -247,7 +314,7 @@ fn game_over_screen(score: usize, previous_best: usize) -> impl Scene {
             GAME_OVER_RED,
             score,
             previous_best,
-            "Press SPACE to restart".into(),
+            "RESTART".into(),
         ),
     )
 }
@@ -261,7 +328,7 @@ fn win_screen(score: usize, previous_best: usize) -> impl Scene {
             TITLE_GREEN,
             score,
             previous_best,
-            "Press SPACE to play again".into(),
+            "PLAY AGAIN".into(),
         ),
     )
 }
@@ -333,15 +400,19 @@ fn begin_new_game(
     spawn_food(commands, &[INITIAL_SNAKE_POSITION]);
 }
 
-/// System to start the game from the menu.
+/// System to start the game from the menu, on SPACE or the START button.
 fn start_game_from_menu(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut start_requests: MessageReader<StartRequested>,
     mut game_state: ResMut<GameState>,
     mut camera_shake: ResMut<CameraShake>,
     menu_ui: Query<Entity, With<MenuUI>>,
 ) {
-    if game_state.phase == GamePhase::Menu && keyboard_input.just_pressed(KeyCode::Space) {
+    // Drain unconditionally so a request from another phase can't linger.
+    let button_clicked = start_requests.read().count() > 0;
+    let requested = button_clicked || keyboard_input.just_pressed(KeyCode::Space);
+    if game_state.phase == GamePhase::Menu && requested {
         for entity in menu_ui.iter() {
             commands.entity(entity).despawn();
         }
@@ -349,11 +420,13 @@ fn start_game_from_menu(
     }
 }
 
-/// System to restart the game from the game-over or win screen.
+/// System to restart the game from the game-over or win screen, on SPACE or
+/// the RESTART / PLAY AGAIN button.
 #[allow(clippy::too_many_arguments)]
 fn restart_game(
     mut commands: Commands,
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut start_requests: MessageReader<StartRequested>,
     mut game_state: ResMut<GameState>,
     mut input_buffer: ResMut<InputBuffer>,
     mut camera_shake: ResMut<CameraShake>,
@@ -363,8 +436,11 @@ fn restart_game(
     game_over_ui: Query<Entity, With<GameOverUI>>,
     win_ui: Query<Entity, With<WinUI>>,
 ) {
+    // Drain unconditionally so a request from another phase can't linger.
+    let button_clicked = start_requests.read().count() > 0;
+    let requested = button_clicked || keyboard_input.just_pressed(KeyCode::Space);
     let restartable = matches!(game_state.phase, GamePhase::GameOver | GamePhase::Won);
-    if !(restartable && keyboard_input.just_pressed(KeyCode::Space)) {
+    if !(restartable && requested) {
         return;
     }
 
