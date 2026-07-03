@@ -152,15 +152,22 @@ fn overlay<L: SceneList>(scrim_alpha: f32, content: L) -> impl Scene {
 
 /// One line of bold text with a gap below it — every text row on every
 /// screen is one of these.
-fn label(text: String, size: f32, color: Color, gap_below: f32) -> impl Scene {
+///
+/// Font size and gap are in `vmin` units (percent of the window's smaller
+/// dimension) so the menu and end screens scale with the window instead of
+/// staying fixed at pixel sizes. At the default 520×520 window, 1 vmin =
+/// 5.2 px. The score HUD intentionally does *not* use this helper: it stays
+/// pixel-sized because it is tuned to the arena's fixed-size food-exclusion
+/// zone (`SCORE_AREA_COLS`/`SCORE_AREA_ROWS`).
+fn label(text: String, size_vmin: f32, color: Color, gap_below_vmin: f32) -> impl Scene {
     bsn! {
         Text(text)
         TextFont {
-            font_size: { FontSize::Px(size) },
+            font_size: { FontSize::VMin(size_vmin) },
             weight: FontWeight::BOLD,
         }
         TextColor(color)
-        Node { margin: { UiRect::bottom(Val::Px(gap_below)) } }
+        Node { margin: { UiRect::bottom(Val::VMin(gap_below_vmin)) } }
     }
 }
 
@@ -174,13 +181,13 @@ fn start_menu(high_score: usize) -> impl Scene {
         overlay(
             0.85,
             bsn_list![
-                label("SNAKE".into(), 80.0, TITLE_GREEN, 40.0),
+                label("SNAKE".into(), 15.4, TITLE_GREEN, 7.7),
                 { menu_high_score(high_score) },
-                label("CONTROLS".into(), 24.0, Color::WHITE, 15.0),
-                label("Arrow Keys or WASD to move".into(), 18.0, HINT_GRAY, 10.0),
-                label("Eat the red apples to grow".into(), 18.0, HINT_GRAY, 10.0),
-                label("Don't run into yourself!".into(), 18.0, HINT_GRAY, 40.0),
-                label("Press SPACE to start".into(), 24.0, START_GREEN, 0.0),
+                label("CONTROLS".into(), 4.6, Color::WHITE, 2.9),
+                label("Arrow Keys or WASD to move".into(), 3.5, HINT_GRAY, 1.9),
+                label("Eat the red apples to grow".into(), 3.5, HINT_GRAY, 1.9),
+                label("Don't run into yourself!".into(), 3.5, HINT_GRAY, 7.7),
+                label("Press SPACE to start".into(), 4.6, START_GREEN, 0.0),
             ],
         ),
     )
@@ -190,7 +197,7 @@ fn start_menu(high_score: usize) -> impl Scene {
 /// has actually scored something (`None` spawns nothing).
 fn menu_high_score(high_score: usize) -> Option<impl SceneList> {
     (high_score > 0)
-        .then(|| bsn_list![label(format!("High Score: {high_score}"), 20.0, MENU_GOLD, 30.0)])
+        .then(|| bsn_list![label(format!("High Score: {high_score}"), 3.8, MENU_GOLD, 5.8)])
 }
 
 /// Shared layout of the game-over and win screens: title, final score,
@@ -208,10 +215,10 @@ fn end_screen(
     overlay(
         0.82,
         bsn_list![
-            label(title, 60.0, title_color, 20.0),
-            label(format!("Final Score: {}", score), 30.0, Color::WHITE, 12.0),
+            label(title, 11.5, title_color, 3.8),
+            label(format!("Final Score: {}", score), 5.8, Color::WHITE, 2.3),
             record_line(score, previous_best),
-            label(hint, 20.0, HINT_GRAY, 0.0),
+            label(hint, 3.8, HINT_GRAY, 0.0),
         ],
     )
 }
@@ -228,7 +235,7 @@ fn record_line(score: usize, previous_best: usize) -> impl Scene {
     } else {
         (format!("Best: {}", previous_best), BEST_GRAY)
     };
-    label(text, 22.0, color, 30.0)
+    label(text, 4.2, color, 5.8)
 }
 
 /// The game over screen.
