@@ -1,8 +1,8 @@
 //! UI plugin - handles menus, game over screen, score display, and game flow.
 
+use bevy::camera::Hdr;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
-use bevy::render::view::Hdr;
 use bevy::text::FontWeight;
 
 use bevy_vector_shapes::prelude::*;
@@ -91,7 +91,7 @@ fn setup_system(mut commands: Commands) {
     commands.spawn((
         Text::from("Score: 0"),
         TextFont {
-            font_size: 20.0,
+            font_size: FontSize::Px(20.0),
             weight: FontWeight::BOLD,
             ..default()
         },
@@ -131,7 +131,7 @@ fn spawn_start_menu(commands: &mut Commands) {
             parent.spawn((
                 Text::from("SNAKE"),
                 TextFont {
-                    font_size: 80.0,
+                    font_size: FontSize::Px(80.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -146,7 +146,7 @@ fn spawn_start_menu(commands: &mut Commands) {
             parent.spawn((
                 Text::from("CONTROLS"),
                 TextFont {
-                    font_size: 24.0,
+                    font_size: FontSize::Px(24.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -160,7 +160,7 @@ fn spawn_start_menu(commands: &mut Commands) {
             parent.spawn((
                 Text::from("Arrow Keys or WASD to move"),
                 TextFont {
-                    font_size: 18.0,
+                    font_size: FontSize::Px(18.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -174,7 +174,7 @@ fn spawn_start_menu(commands: &mut Commands) {
             parent.spawn((
                 Text::from("Eat the red apples to grow"),
                 TextFont {
-                    font_size: 18.0,
+                    font_size: FontSize::Px(18.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -188,7 +188,7 @@ fn spawn_start_menu(commands: &mut Commands) {
             parent.spawn((
                 Text::from("Don't run into yourself!"),
                 TextFont {
-                    font_size: 18.0,
+                    font_size: FontSize::Px(18.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -204,7 +204,7 @@ fn spawn_start_menu(commands: &mut Commands) {
             parent.spawn((
                 Text::from("Press SPACE to start"),
                 TextFont {
-                    font_size: 24.0,
+                    font_size: FontSize::Px(24.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -236,7 +236,7 @@ fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
             parent.spawn((
                 Text::from("GAME OVER"),
                 TextFont {
-                    font_size: 60.0,
+                    font_size: FontSize::Px(60.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -251,7 +251,7 @@ fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
             parent.spawn((
                 Text::from(format!("Final Score: {}", score)),
                 TextFont {
-                    font_size: 30.0,
+                    font_size: FontSize::Px(30.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -266,7 +266,7 @@ fn spawn_game_over_screen(commands: &mut Commands, score: usize) {
             parent.spawn((
                 Text::from("Press SPACE to restart"),
                 TextFont {
-                    font_size: 20.0,
+                    font_size: FontSize::Px(20.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -308,7 +308,7 @@ fn spawn_win_screen(commands: &mut Commands, score: usize) {
             parent.spawn((
                 Text::from("YOU WIN!"),
                 TextFont {
-                    font_size: 60.0,
+                    font_size: FontSize::Px(60.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -322,7 +322,7 @@ fn spawn_win_screen(commands: &mut Commands, score: usize) {
             parent.spawn((
                 Text::from(format!("Final Score: {}", score)),
                 TextFont {
-                    font_size: 30.0,
+                    font_size: FontSize::Px(30.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
@@ -336,7 +336,7 @@ fn spawn_win_screen(commands: &mut Commands, score: usize) {
             parent.spawn((
                 Text::from("Press SPACE to play again"),
                 TextFont {
-                    font_size: 20.0,
+                    font_size: FontSize::Px(20.0),
                     weight: FontWeight::BOLD,
                     ..default()
                 },
