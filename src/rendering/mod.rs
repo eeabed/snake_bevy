@@ -8,8 +8,8 @@ use std::time::Duration;
 
 use crate::game::{
     ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, Direction, FOOD_EATEN_COLOR, FoodEatenEvent,
-    GamePhase, GameSet, GameState, GrowingSegment, MOVE_INTERVAL, Position, PreviousPosition,
-    PulseEffect, SnakeHead, Z_FOOD,
+    GamePhase, GameSet, GameState, GrowingSegment, MOVE_INTERVAL, PARTICLE_COLORS, Particle,
+    Position, PreviousPosition, PulseEffect, SCORE_POPUP_COLOR, ScorePopup, SnakeHead, Z_FOOD,
 };
 
 /// Plugin for rendering and visual effects.
@@ -24,6 +24,8 @@ impl Plugin for RenderingPlugin {
                 update_head_rotation,
                 pulse_effect_system,
                 spawn_food_eaten_effect,
+                particle_update,
+                score_popup_update,
                 camera_shake_system,
                 growing_segment_animation,
                 trigger_camera_shake_on_game_over,
@@ -169,9 +171,9 @@ fn spawn_food_eaten_effect(
                 radius,
             ),
             PulseEffect {
-                timer: Timer::from_seconds(0.35, TimerMode::Once),
+                timer: Timer::from_seconds(0.30, TimerMode::Once),
                 start_scale: 0.8,
-                end_scale: 3.0,
+                end_scale: 2.4,
             },
         ));
 
@@ -194,6 +196,91 @@ fn spawn_food_eaten_effect(
                 end_scale: 4.0,
             },
         ));
+
+        // Juice burst: little HDR droplets that fly out, slow down, and
+        // fade — the main "crunch" feedback for eating an apple.
+        let mut rng = rand::rng();
+        for _ in 0..18 {
+            let angle = rng.random_range(0.0..std::f32::consts::TAU);
+            let speed = rng.random_range(50.0..170.0);
+            let color = PARTICLE_COLORS[rng.random_range(0..PARTICLE_COLORS.len())];
+            commands.spawn((
+                ShapeBundle::circle(
+                    &ShapeConfig {
+                        color,
+                        alpha_mode: ShapeAlphaMode::Add,
+                        transform: Transform::from_xyz(x, y, Z_FOOD + 0.6),
+                        ..ShapeConfig::default_2d()
+                    },
+                    rng.random_range(2.0..4.5),
+                ),
+                Particle {
+                    velocity: Vec2::from_angle(angle) * speed,
+                    timer: Timer::from_seconds(rng.random_range(0.35..0.6), TimerMode::Once),
+                },
+            ));
+        }
+
+        // Floating "+1" over the bite.
+        commands.spawn((
+            Text2d::new("+1"),
+            TextFont {
+                font_size: FontSize::Px(24.0),
+                weight: bevy::text::FontWeight::BOLD,
+                ..default()
+            },
+            TextColor(SCORE_POPUP_COLOR),
+            Transform::from_xyz(x, y + CELL_SIZE * 0.3, Z_FOOD + 0.7),
+            ScorePopup {
+                timer: Timer::from_seconds(0.7, TimerMode::Once),
+            },
+        ));
+    }
+}
+
+/// Moves, decelerates, shrinks, and fades the food-eaten juice droplets.
+fn particle_update(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut particles: Query<(Entity, &mut Transform, &mut Particle, &mut ShapeFill)>,
+) {
+    for (entity, mut transform, mut particle, mut fill) in particles.iter_mut() {
+        particle.timer.tick(time.delta());
+
+        if particle.timer.is_finished() {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        let dt = time.delta_secs();
+        transform.translation += (particle.velocity * dt).extend(0.0);
+        // Drag so the burst blooms outward then hangs for a beat.
+        particle.velocity *= (1.0 - 3.0 * dt).max(0.0);
+
+        let t = particle.timer.fraction();
+        transform.scale = Vec3::splat(1.0 - t * t);
+        fill.color.set_alpha(1.0 - t);
+    }
+}
+
+/// Floats the "+1" popup upward while fading it out.
+fn score_popup_update(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut popups: Query<(Entity, &mut Transform, &mut TextColor, &mut ScorePopup)>,
+) {
+    for (entity, mut transform, mut color, mut popup) in popups.iter_mut() {
+        popup.timer.tick(time.delta());
+
+        if popup.timer.is_finished() {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        let t = popup.timer.fraction();
+        // Rise fast at first, then ease off as it fades.
+        transform.translation.y += 45.0 * time.delta_secs() * (1.0 - t * 0.6);
+        color.0.set_alpha(1.0 - t * t);
     }
 }
 

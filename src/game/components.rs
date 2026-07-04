@@ -78,6 +78,32 @@ pub struct GrowingSegment {
     pub timer: Timer,
 }
 
+/// Pop-in animation for newly spawned food (scale 0 → 1 with overshoot).
+#[derive(Component)]
+pub struct SpawnPop {
+    pub timer: Timer,
+}
+
+/// A short-lived particle from the food-eaten burst.
+#[derive(Component)]
+pub struct Particle {
+    pub velocity: Vec2,
+    pub timer: Timer,
+}
+
+/// Floating "+1" popup over an eaten apple.
+#[derive(Component)]
+pub struct ScorePopup {
+    pub timer: Timer,
+}
+
+/// Marker for the snake's tongue shapes (children of the head).
+/// `side` is +1.0 / -1.0 for the two forked halves.
+#[derive(Component)]
+pub struct SnakeTongue {
+    pub side: f32,
+}
+
 // The UI markers below derive `Default + Clone` in addition to `Component`
 // because they are spawned through `bsn!` scenes, whose template machinery
 // requires both.

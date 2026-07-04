@@ -4,10 +4,10 @@ use bevy::{ecs::system::ParamSet, prelude::*, time::common_conditions::on_timer}
 use bevy_vector_shapes::prelude::*;
 
 use crate::game::{
-    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CORNER_RADIUS, Direction, GamePhase, GameSet, GameState,
+    ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, Direction, GamePhase, GameSet, GameState,
     GrowingSegment, GrowthEvent, INITIAL_SNAKE_POSITION, InputBuffer, MOVE_INTERVAL, Position,
     PreviousPosition, SNAKE_HEAD_COLOR, SNAKE_SEGMENT_COLOR, SnakeEye, SnakeHead, SnakeSegment,
-    Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
+    SnakeTongue, TONGUE_COLOR, Z_SNAKE_HEAD, Z_SNAKE_SEGMENT,
 };
 
 // Visual sizing: head fills almost the full cell so it reads as larger than
@@ -15,6 +15,17 @@ use crate::game::{
 // visible gap (~14% of CELL_SIZE).
 const HEAD_SIZE_FACTOR: f32 = 0.92;
 const SEGMENT_SIZE_FACTOR: f32 = 0.86;
+
+// Corner rounding, normalized to the shape's half-size (0.0 = square,
+// 1.0 = pill). The head is rounder than the body so it reads as a snout.
+const HEAD_ROUNDING: f32 = 0.7;
+const SEGMENT_ROUNDING: f32 = 0.55;
+
+// Tongue geometry (local pixel space of the head, +x = forward).
+const TONGUE_LENGTH: f32 = CELL_SIZE * 0.42;
+const TONGUE_WIDTH: f32 = CELL_SIZE * 0.07;
+/// Angle between each fork half and the forward axis.
+const TONGUE_FORK_ANGLE: f32 = 0.20;
 
 // Tail tapering — the last few segments are scaled down progressively so the
 // snake doesn't end abruptly. Index 0 is the tail itself.
@@ -60,7 +71,10 @@ impl Plugin for SnakePlugin {
         // in the Rendering set so it runs after `growing_segment_animation`
         // (whose final-frame `scale = 1.0` write we want to overwrite for
         // tail segments).
-        app.add_systems(Update, style_snake_body.in_set(GameSet::Rendering));
+        app.add_systems(
+            Update,
+            (style_snake_body, animate_tongue, blink_eyes).in_set(GameSet::Rendering),
+        );
     }
 }
 
@@ -83,31 +97,30 @@ type BodyStyleQuery<'w, 's> = Query<
     (With<SnakeSegment>, Without<GrowingSegment>),
 >;
 
-/// Spawns the snake head entity with eyes.
+/// Spawns the snake head entity with eyes and a forked tongue.
 ///
 /// The head is colored in HDR-green (matches the body's hue but pushed past
 /// 1.0 so the bloom pass picks it up — no separate "glow disc" child needed).
-/// Eyes are positioned toward the front of the head (assumes the head spawns
-/// facing `Right`; `update_head_rotation` rotates the children to follow).
+/// Eyes and tongue live in the head's local space with +x = forward (the
+/// head spawns facing `Right`; `update_head_rotation` rotates the children
+/// to follow).
 pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
     let size = CELL_SIZE * HEAD_SIZE_FACTOR;
-    // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
-    let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
 
     // Eye geometry, in the head's local pixel space.
     //   forward: pushed toward the front (positive x = "Right" direction)
     //   lateral: spaced wider apart so the two eyes don't read as a colon
-    //   radius:  large enough to be visibly two distinct dots at ~25 px cells
     let eye_forward = CELL_SIZE * 0.18;
     let eye_lateral = CELL_SIZE * 0.22;
-    let eye_radius = CELL_SIZE * 0.13;
+    let sclera_radius = CELL_SIZE * 0.15;
+    let pupil_radius = CELL_SIZE * 0.085;
 
     commands
         .spawn((
             ShapeBundle::rect(
                 &ShapeConfig {
                     color: SNAKE_HEAD_COLOR,
-                    corner_radii: Vec4::splat(corner_radius_normalized),
+                    corner_radii: Vec4::splat(HEAD_ROUNDING),
                     transform: Transform::from_xyz(
                         (INITIAL_SNAKE_POSITION.x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5)
                             * CELL_SIZE,
@@ -127,32 +140,55 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
                 pos: INITIAL_SNAKE_POSITION,
             },
         ))
-        .with_children(|parent| {
-            // Front-right eye (relative to spawn direction = Right).
-            parent.spawn((
-                ShapeBundle::circle(
-                    &ShapeConfig {
-                        color: Color::srgba(0.0, 0.0, 0.0, 1.0),
-                        transform: Transform::from_xyz(eye_forward, eye_lateral, 0.1),
-                        ..ShapeConfig::default_2d()
-                    },
-                    eye_radius,
-                ),
-                SnakeEye,
-            ));
+        .with_children(|head| {
+            // Eyes: white sclera with a black pupil set slightly forward,
+            // so the snake looks where it's going. The pupil is a child of
+            // the sclera and rides its blink squash.
+            for side in [1.0_f32, -1.0] {
+                head.spawn((
+                    ShapeBundle::circle(
+                        &ShapeConfig {
+                            color: Color::srgba(0.95, 0.95, 0.9, 1.0),
+                            transform: Transform::from_xyz(
+                                eye_forward,
+                                side * eye_lateral,
+                                0.1,
+                            ),
+                            ..ShapeConfig::default_2d()
+                        },
+                        sclera_radius,
+                    ),
+                    SnakeEye,
+                ))
+                .with_children(|eye| {
+                    eye.spawn(ShapeBundle::circle(
+                        &ShapeConfig {
+                            color: Color::srgba(0.02, 0.02, 0.02, 1.0),
+                            transform: Transform::from_xyz(CELL_SIZE * 0.05, 0.0, 0.01),
+                            ..ShapeConfig::default_2d()
+                        },
+                        pupil_radius,
+                    ));
+                });
+            }
 
-            // Front-left eye.
-            parent.spawn((
-                ShapeBundle::circle(
-                    &ShapeConfig {
-                        color: Color::srgba(0.0, 0.0, 0.0, 1.0),
-                        transform: Transform::from_xyz(eye_forward, -eye_lateral, 0.1),
-                        ..ShapeConfig::default_2d()
-                    },
-                    eye_radius,
-                ),
-                SnakeEye,
-            ));
+            // Forked tongue: two thin pills angled apart, animated by
+            // `animate_tongue` (spawned retracted at scale.x = 0).
+            for side in [1.0_f32, -1.0] {
+                head.spawn((
+                    ShapeBundle::rect(
+                        &ShapeConfig {
+                            color: TONGUE_COLOR,
+                            corner_radii: Vec4::splat(1.0),
+                            transform: Transform::from_xyz(size / 2.0, 0.0, -0.05)
+                                .with_scale(Vec3::new(0.0, 1.0, 1.0)),
+                            ..ShapeConfig::default_2d()
+                        },
+                        Vec2::new(TONGUE_LENGTH, TONGUE_WIDTH),
+                    ),
+                    SnakeTongue { side },
+                ));
+            }
         })
         .id()
 }
@@ -163,8 +199,6 @@ pub fn spawn_snake_head(commands: &mut Commands) -> Entity {
 /// the body reads as a chain of pills rather than a continuous rectangle.
 pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entity {
     let size = CELL_SIZE * SEGMENT_SIZE_FACTOR;
-    // Normalize corner radius relative to the shape size (0.0 to 1.0 range)
-    let corner_radius_normalized = CORNER_RADIUS / (size / 2.0);
 
     // Compute world-space spawn coordinates so the segment renders at the right
     // z-layer immediately. `position_translation` will overwrite x/y next frame
@@ -177,7 +211,7 @@ pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entit
             ShapeBundle::rect(
                 &ShapeConfig {
                     color: SNAKE_SEGMENT_COLOR,
-                    corner_radii: Vec4::splat(corner_radius_normalized),
+                    corner_radii: Vec4::splat(SEGMENT_ROUNDING),
                     transform: Transform::from_xyz(world_x, world_y, Z_SNAKE_SEGMENT),
                     ..ShapeConfig::default_2d()
                 },
@@ -366,6 +400,65 @@ fn game_over_check(
     }
 }
 
+/// Flicks the forked tongue out of the snout every few seconds.
+///
+/// Both fork halves share one clock (`Time::elapsed_secs` modulo the cycle),
+/// extending along their own angled axis with a quick out-and-back triangle
+/// envelope. Retracted (scale.x = 0) outside the flick window and whenever
+/// the game isn't in the `Playing` phase.
+fn animate_tongue(
+    time: Res<Time>,
+    game_state: Res<GameState>,
+    mut tongues: Query<(&SnakeTongue, &mut Transform)>,
+) {
+    const CYCLE: f32 = 2.8;
+    const FLICK: f32 = 0.45;
+
+    let t = time.elapsed_secs() % CYCLE;
+    let progress = if game_state.phase == GamePhase::Playing && t < FLICK {
+        // Triangle envelope: 0 → 1 → 0 over the flick window.
+        let u = t / FLICK;
+        1.0 - (2.0 * u - 1.0).abs()
+    } else {
+        0.0
+    };
+
+    let mouth = CELL_SIZE * HEAD_SIZE_FACTOR / 2.0;
+    for (tongue, mut transform) in tongues.iter_mut() {
+        let angle = tongue.side * TONGUE_FORK_ANGLE;
+        // Scale the pill along its own axis and push it out so the base
+        // stays anchored at the mouth.
+        let reach = mouth + (TONGUE_LENGTH * progress) / 2.0 - 1.0;
+        transform.scale.x = progress;
+        transform.translation.x = reach * angle.cos();
+        transform.translation.y = reach * angle.sin();
+        transform.rotation = Quat::from_rotation_z(angle);
+    }
+}
+
+/// Blinks both eyes in sync every few seconds by squashing the sclera
+/// vertically (the pupil is a child, so it rides along).
+fn blink_eyes(
+    time: Res<Time>,
+    game_state: Res<GameState>,
+    mut eyes: Query<&mut Transform, With<SnakeEye>>,
+) {
+    const CYCLE: f32 = 3.7;
+    const BLINK: f32 = 0.14;
+
+    let t = time.elapsed_secs() % CYCLE;
+    let squash = if game_state.phase == GamePhase::Playing && t < BLINK {
+        let u = t / BLINK;
+        1.0 - 0.85 * (1.0 - (2.0 * u - 1.0).abs())
+    } else {
+        1.0
+    };
+
+    for mut transform in eyes.iter_mut() {
+        transform.scale.y = squash;
+    }
+}
+
 /// Linearly interpolate between two `srgba` colors. Used for the body's
 /// head→tail brightness gradient.
 fn lerp_color(a: Color, b: Color, t: f32) -> Color {
@@ -389,7 +482,11 @@ fn lerp_color(a: Color, b: Color, t: f32) -> Color {
 /// Both scale and color writes are guarded so they only fire when the value
 /// actually changes — avoids spurious change-detection ticks for segments
 /// in the steady-state middle of the body.
-fn style_snake_body(game_state: Res<GameState>, mut segments: BodyStyleQuery) {
+///
+/// On top of the taper, a slow "breathing" wave travels from head to tail
+/// (a few percent of scale, phase-shifted per segment) so the body reads as
+/// one living organism rather than a chain of static tiles.
+fn style_snake_body(time: Res<Time>, game_state: Res<GameState>, mut segments: BodyStyleQuery) {
     let total = game_state.snake_segments.len();
     if total < 2 {
         return; // only the head — no body to style.
@@ -403,7 +500,10 @@ fn style_snake_body(game_state: Res<GameState>, mut segments: BodyStyleQuery) {
         let from_tail = body_count - 1 - body_index;
 
         // Scale taper for the last few segments; full scale otherwise.
-        let scale_factor = TAIL_TAPER.get(from_tail).copied().unwrap_or(1.0);
+        let taper = TAIL_TAPER.get(from_tail).copied().unwrap_or(1.0);
+        // Breathing wave traveling down the body.
+        let wave = 1.0 + 0.045 * (time.elapsed_secs() * 6.0 - body_index as f32 * 0.85).sin();
+        let scale_factor = taper * wave;
 
         // Color gradient: t = 0.0 at the segment closest to the head,
         // t = 1.0 at the tail. Single-segment body collapses to t = 0.0.

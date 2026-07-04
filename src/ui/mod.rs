@@ -17,9 +17,10 @@ use bevy_vector_shapes::prelude::*;
 
 use crate::food::spawn_food;
 use crate::game::{
-    ARENA_BORDER_COLOR, ARENA_COLOR, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE, CameraShake, Food,
-    GameOverUI, GamePhase, GameSet, GameState, HighScore, INITIAL_SNAKE_POSITION, InputBuffer,
-    MenuUI, PulseEffect, ScoreText, SnakeHead, SnakeSegment, StartRequested, WinUI, Z_BACKGROUND,
+    ARENA_BORDER_COLOR, ARENA_COLOR, ARENA_COLOR_ALT, ARENA_HEIGHT, ARENA_WIDTH, CELL_SIZE,
+    CameraShake, Food, GameOverUI, GamePhase, GameSet, GameState, HighScore,
+    INITIAL_SNAKE_POSITION, InputBuffer, MenuUI, Particle, PulseEffect, ScorePopup, ScoreText,
+    SnakeHead, SnakeSegment, StartRequested, WinUI, Z_BACKGROUND,
 };
 use crate::snake::spawn_snake_head;
 
@@ -69,6 +70,9 @@ impl Plugin for UiPlugin {
 
 // Type alias for querying snake entities
 type SnakeEntityQuery<'w, 's> = Query<'w, 's, Entity, Or<(With<SnakeSegment>, With<SnakeHead>)>>;
+// Every kind of transient eating effect, for restart cleanup.
+type EffectEntityQuery<'w, 's> =
+    Query<'w, 's, Entity, Or<(With<PulseEffect>, With<Particle>, With<ScorePopup>)>>;
 
 /// Initial setup system - camera, arena, score text, start menu.
 ///
@@ -100,6 +104,27 @@ fn setup_system(mut commands: Commands, high_score: Res<HighScore>) {
         },
         Transform::from_translation(Vec3::new(0.0, 0.0, Z_BACKGROUND)),
     ));
+
+    // Subtle checkerboard over the arena so movement reads against the grid.
+    for x in 0..ARENA_WIDTH as i32 {
+        for y in 0..ARENA_HEIGHT as i32 {
+            if (x + y) % 2 == 0 {
+                continue;
+            }
+            commands.spawn((
+                Sprite {
+                    color: ARENA_COLOR_ALT,
+                    custom_size: Some(Vec2::splat(CELL_SIZE)),
+                    ..default()
+                },
+                Transform::from_xyz(
+                    (x as f32 - ARENA_WIDTH as f32 / 2.0 + 0.5) * CELL_SIZE,
+                    (y as f32 - ARENA_HEIGHT as f32 / 2.0 + 0.5) * CELL_SIZE,
+                    Z_BACKGROUND + 0.05,
+                ),
+            ));
+        }
+    }
 
     // Glowing arena border using hollow rectangle. Stays a plain spawn:
     // `ShapeBundle` is a bundle, not a component, so it can't appear in `bsn!`.
@@ -432,7 +457,7 @@ fn restart_game(
     mut camera_shake: ResMut<CameraShake>,
     segments: SnakeEntityQuery,
     food: Query<Entity, With<Food>>,
-    pulse_effects: Query<Entity, With<PulseEffect>>,
+    effects: EffectEntityQuery,
     game_over_ui: Query<Entity, With<GameOverUI>>,
     win_ui: Query<Entity, With<WinUI>>,
 ) {
@@ -444,13 +469,9 @@ fn restart_game(
         return;
     }
 
-    // Despawn snake, food, and any in-flight food-eaten flash effects so the
-    // new game starts with a visually clean arena.
-    for entity in segments
-        .iter()
-        .chain(food.iter())
-        .chain(pulse_effects.iter())
-    {
+    // Despawn snake, food, and any in-flight eating effects (flashes,
+    // particles, score popups) so the new game starts visually clean.
+    for entity in segments.iter().chain(food.iter()).chain(effects.iter()) {
         commands.entity(entity).despawn();
     }
     // Despawn whichever end-screen overlay is currently visible.
