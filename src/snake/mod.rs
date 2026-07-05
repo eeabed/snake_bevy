@@ -230,14 +230,18 @@ pub fn spawn_snake_segment(commands: &mut Commands, position: Position) -> Entit
 /// Lives here rather than on `Direction` itself because it depends on a Bevy
 /// input resource — a concern that doesn't belong on a plain data enum.
 fn direction_from_input(keyboard_input: &ButtonInput<KeyCode>, current: Direction) -> Direction {
-    if keyboard_input.pressed(KeyCode::ArrowLeft) || keyboard_input.pressed(KeyCode::KeyA) {
+    // `just_pressed` is checked in addition to `pressed` so a tap whose
+    // key-up lands in the same frame as its key-down still registers
+    // (possible with very fast taps or synthetic input on the web build).
+    let down = |key: KeyCode| keyboard_input.pressed(key) || keyboard_input.just_pressed(key);
+
+    if down(KeyCode::ArrowLeft) || down(KeyCode::KeyA) {
         Direction::Left
-    } else if keyboard_input.pressed(KeyCode::ArrowRight) || keyboard_input.pressed(KeyCode::KeyD)
-    {
+    } else if down(KeyCode::ArrowRight) || down(KeyCode::KeyD) {
         Direction::Right
-    } else if keyboard_input.pressed(KeyCode::ArrowUp) || keyboard_input.pressed(KeyCode::KeyW) {
+    } else if down(KeyCode::ArrowUp) || down(KeyCode::KeyW) {
         Direction::Up
-    } else if keyboard_input.pressed(KeyCode::ArrowDown) || keyboard_input.pressed(KeyCode::KeyS) {
+    } else if down(KeyCode::ArrowDown) || down(KeyCode::KeyS) {
         Direction::Down
     } else {
         current

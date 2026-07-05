@@ -46,7 +46,11 @@ jobs:
       - name: Optimize wasm (wasm-opt -Oz)
         run: |
           curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/version_118/binaryen-version_118-x86_64-linux.tar.gz" | tar xz
-          binaryen-version_118/bin/wasm-opt -Oz --output optimized.wasm _site/pkg/snake_bevy_bg.wasm
+          # Rust enables bulk-memory and nontrapping-fptoint by default;
+          # wasm-opt must be told to accept them.
+          binaryen-version_118/bin/wasm-opt -Oz \
+            --enable-bulk-memory --enable-nontrapping-float-to-int \
+            --output optimized.wasm _site/pkg/snake_bevy_bg.wasm
           mv optimized.wasm _site/pkg/snake_bevy_bg.wasm
           ls -la _site/pkg/
 
