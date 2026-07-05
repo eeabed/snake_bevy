@@ -8,6 +8,12 @@ bevy = { version = "0.19", default-features = false, features = ["2d", "ui", "be
 bevy_vector_shapes = "0.13"
 rand = "0.10"
 
+# Web build (GitHub Pages): WebGPU only — the game's HDR/bloom pipeline
+# needs it, and WebGL2 can't provide it.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+bevy = { version = "0.19", default-features = false, features = ["web", "webgpu"] }
+getrandom = { version = "0.4", features = ["wasm_js"] }
+
 # Enable a small amount of optimization in debug mode
 [profile.dev]
 opt-level = 0

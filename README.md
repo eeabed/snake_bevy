@@ -2,6 +2,8 @@
 
 A simple Snake game implemented in Rust using the Bevy game engine, initially written entirely by _Claud Desktop_ with _Desktop Commander MCP_. Later updates were made using _Claude Code_.
 
+**[▶ Play it in your browser](https://eeabed.github.io/snake_bevy/)** — needs a WebGPU-capable browser (recent Chrome, Edge, or Safari).
+
 ![Start menu with persistent high score and clickable START button](screenshot1.png)
 ![Gameplay: the snake closing in on an apple](screenshot2.png)
 ![Eating an apple: bloom flash, juice particles, and a floating +1](screenshot3.png)

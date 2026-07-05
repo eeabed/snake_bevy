@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Snake — Rust + Bevy</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      margin: 0;
+      min-height: 100vh;
+      background: #050508;
+      color: #ccc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      text-align: center;
+    }
+    h1 {
+      color: #4dff4d;
+      font-size: 28px;
+      letter-spacing: 0.35em;
+      margin: 24px 0 0;
+      text-shadow: 0 0 18px rgba(77, 255, 77, 0.55);
+    }
+    #game-canvas {
+      width: 520px;
+      max-width: 96vw;
+      aspect-ratio: 1 / 1;
+      height: auto;
+      border-radius: 8px;
+      box-shadow: 0 0 40px rgba(48, 80, 128, 0.35);
+      outline: none;
+      background: #020203;
+    }
+    #status { font-size: 14px; color: #888; max-width: 520px; padding: 0 16px; }
+    #status a { color: #7aa2ff; }
+    .error { color: #ff7a7a; }
+    footer { font-size: 12px; color: #555; margin-bottom: 20px; }
+    footer a { color: #667; }
+  </style>
+</head>
+<body>
+  <h1>SNAKE</h1>
+  <canvas id="game-canvas"></canvas>
+  <p id="status">Loading&hellip;</p>
+  <footer>
+    Rust + <a href="https://bevy.org">Bevy</a> compiled to WebAssembly &middot;
+    <a href="https://github.com/eeabed/snake_bevy">source on GitHub</a>
+  </footer>
+  <script type="module">
+    const status = document.getElementById("status");
+
+    if (!navigator.gpu) {
+      status.innerHTML =
+        '<span class="error">This game needs WebGPU, which your browser ' +
+        "doesn&rsquo;t support.</span><br/>Try a recent Chrome, Edge, or " +
+        'Safari &mdash; see <a href="https://caniuse.com/webgpu">browser support</a>.';
+    } else {
+      try {
+        const { default: init } = await import("./pkg/snake_bevy.js");
+        await init();
+        status.textContent = "Arrow keys or WASD to move · click the canvas first if keys don't register";
+      } catch (e) {
+        // Winit uses an exception for control flow on startup; it is not an error.
+        if (e && String(e).includes("Using exceptions for control flow")) {
+          status.textContent = "Arrow keys or WASD to move · click the canvas first if keys don't register";
+        } else {
+          status.innerHTML = '<span class="error">Failed to start: ' + e + "</span>";
+          throw e;
+        }
+      }
+    }
+  </script>
+</body>
+</html>

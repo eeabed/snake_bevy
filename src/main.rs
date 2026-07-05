@@ -47,6 +47,9 @@ fn main() {
                         (ARENA_HEIGHT as f32 * CELL_SIZE + WINDOW_PADDING) as u32,
                     ),
                     title: "Snake Game".to_string(),
+                    // On the web, render into the page's existing canvas
+                    // instead of appending a new one (ignored on native).
+                    canvas: Some("#game-canvas".to_string()),
                     ..Default::default()
                 }),
                 ..default()

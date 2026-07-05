@@ -15,3 +15,6 @@ Cargo.lock
 
 # macOS specific files
 .DS_Store
+
+# Local wasm build output (CI rebuilds this for GitHub Pages)
+/web/pkg/

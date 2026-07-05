@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust with wasm target
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build (wasm32, WebGPU)
+        run: cargo build --release --target wasm32-unknown-unknown
+
+      # Cargo.lock is generated during the build (it is not committed), so
+      # read the wasm-bindgen crate version from it and install the exact
+      # matching CLI — a mismatch makes wasm-bindgen refuse to run.
+      - name: Install matching wasm-bindgen CLI
+        run: |
+          VERSION=$(grep -A1 'name = "wasm-bindgen"' Cargo.lock | grep version | head -1 | cut -d'"' -f2)
+          echo "wasm-bindgen $VERSION"
+          curl -sSfL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${VERSION}/wasm-bindgen-${VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          echo "$PWD/wasm-bindgen-${VERSION}-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
+
+      - name: Generate JS bindings
+        run: wasm-bindgen --target web --no-typescript --out-dir _site/pkg target/wasm32-unknown-unknown/release/snake_bevy.wasm
+
+      - name: Optimize wasm (wasm-opt -Oz)
+        run: |
+          curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/version_118/binaryen-version_118-x86_64-linux.tar.gz" | tar xz
+          binaryen-version_118/bin/wasm-opt -Oz --output optimized.wasm _site/pkg/snake_bevy_bg.wasm
+          mv optimized.wasm _site/pkg/snake_bevy_bg.wasm
+          ls -la _site/pkg/
+
+      - name: Add page
+        run: cp web/index.html _site/
+
+      - uses: actions/upload-pages-artifact@v3
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
