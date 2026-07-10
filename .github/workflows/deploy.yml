@@ -28,7 +28,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build (wasm32, WebGPU)
-        run: cargo build --release --target wasm32-unknown-unknown
+        run: cargo build --profile wasm-release --target wasm32-unknown-unknown
 
       # Cargo.lock is generated during the build (it is not committed), so
       # read the wasm-bindgen crate version from it and install the exact
@@ -41,7 +41,7 @@ jobs:
           echo "$PWD/wasm-bindgen-${VERSION}-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
 
       - name: Generate JS bindings
-        run: wasm-bindgen --target web --no-typescript --out-dir _site/pkg target/wasm32-unknown-unknown/release/snake_bevy.wasm
+        run: wasm-bindgen --target web --no-typescript --out-dir _site/pkg target/wasm32-unknown-unknown/wasm-release/snake_bevy.wasm
 
       - name: Optimize wasm (wasm-opt -Oz)
         run: |

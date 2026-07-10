@@ -23,9 +23,15 @@ debug = 0
 [profile.dev.package."*"]
 opt-level = 3
 
+# Native release: favor runtime speed
 [profile.release]
-opt-level = "z"
+opt-level = 3
 strip = true
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# Web release (GitHub Pages): favor download size; wasm-opt -Oz shrinks it further in CI
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
